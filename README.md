@@ -1,11 +1,11 @@
-[![CircleCI](https://circleci.com/gh/giantswarm/{APP-NAME}.svg?style=shield)](https://circleci.com/gh/giantswarm/{APP-NAME})
+[![CircleCI](https://circleci.com/gh/giantswarm/aws-vpc-operator.svg?style=shield)](https://circleci.com/gh/giantswarm/aws-vpc-operator)
 
 [Read me after cloning this template (GS staff only)](https://intranet.giantswarm.io/docs/dev-and-releng/app-developer-processes/adding_app_to_appcatalog/)
 
-# {APP-NAME} chart
+# aws-vpc-operator chart
 
-Giant Swarm offers a {APP-NAME} App which can be installed in workload clusters.
-Here we define the {APP-NAME} chart with its templates and default configuration.
+Giant Swarm offers a aws-vpc-operator App which can be installed in workload clusters.
+Here we define the aws-vpc-operator chart with its templates and default configuration.
 
 **What is this app?**
 

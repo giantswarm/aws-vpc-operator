@@ -14,5 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Renamed project name in the template.
+- Renamed `Makefile` to `Makefile.kubebuilder.mk`.
 
 [Unreleased]: https://github.com/giantswarm/aws-vpc-operator/tree/main

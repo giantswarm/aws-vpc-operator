@@ -1,0 +1,6 @@
+domain: giantswarm.io
+layout:
+- go.kubebuilder.io/v3
+projectName: aws-vpc-operator
+repo: github.com/giantswarm/aws-vpc-operator
+version: "3"

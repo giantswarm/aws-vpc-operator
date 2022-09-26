@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- changed: `app.giantswarm.io` label group was changed to `application.giantswarm.io`
-- renamed project name in the template
+### Added
+
+- Initialized Kubebuilder project.
+
+### Changed
+
+- Renamed project name in the template.
+- Renamed `Makefile` to `Makefile.kubebuilder.mk`.
 
 [Unreleased]: https://github.com/giantswarm/aws-vpc-operator/tree/main

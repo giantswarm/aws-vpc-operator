@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Initialized Kubebuilder project.
+- Added VPC controller, reconciler and AWS client.
 
 ### Changed
 

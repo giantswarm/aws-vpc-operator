@@ -10,3 +10,12 @@ image:
   name: giantswarm/aws-vpc-operator
   tag: v0.0.1
   pullPolicy: IfNotPresent
+
+pod:
+  user:
+    id: "65532"
+  group:
+    id: "65532"
+  credentials:
+    dir: /home/.aws
+    filename: credentials

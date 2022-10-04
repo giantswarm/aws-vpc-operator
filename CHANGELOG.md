@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added VPC controller, reconciler and AWS client.
 - Added Helm chart with Deployment, ServiceAccount, Secret.
 - Added ClusterRoles and ClusterRoleBindings.
+- Added PodSecurityPolicy.
 
 ### Changed
 

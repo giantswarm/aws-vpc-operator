@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initialized Kubebuilder project.
 - Added VPC controller, reconciler and AWS client.
-- Added Helm chart with deployment.
+- Added Helm chart with Deployment, ServiceAccount, Secret.
+- Added ClusterRoles and ClusterRoleBindings.
 
 ### Changed
 

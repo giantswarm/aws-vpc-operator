@@ -50,3 +50,7 @@ room for such suffix.
 {{- define "resource.default.namespace" -}}
 giantswarm
 {{- end -}}
+
+{{- define "resource.psp.name" -}}
+{{- include "resource.default.name" . -}}-psp
+{{- end -}}

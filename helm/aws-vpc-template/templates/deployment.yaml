@@ -3,10 +3,12 @@ kind: Deployment
 metadata:
   name: {{ include "resource.default.name"  . }}
   namespace: {{ include "resource.default.namespace"  . }}
-  labels: {{- include "labels.common" . | nindent 4 }}
+  labels:
+    {{- include "labels.common" . | nindent 4 }}
 spec:
   selector:
-    matchLabels: {{- include "labels.selector" . | nindent 6 }}
+    matchLabels:
+      {{- include "labels.selector" . | nindent 6 }}
   replicas: 1
   template:
     metadata:
@@ -47,8 +49,6 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
-        # TODO(user): Configure the resources accordingly based on the project requirements.
-        # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
         resources:
           requests:
             cpu: 100m

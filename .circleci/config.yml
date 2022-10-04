@@ -62,6 +62,9 @@ workflows:
           app_catalog: "control-plane-catalog"
           app_catalog_test: "control-plane-test-catalog"
           chart: "aws-vpc-operator"
+          requires:
+          - push-aws-vpc-operator-to-quay
+          - push-aws-vpc-operator-to-docker
           # Trigger job on git tag.
           filters:
             tags:
@@ -73,8 +76,6 @@ workflows:
           app_name: "aws-vpc-operator"
           app_collection_repo: "capa-app-collection"
           requires:
-          - push-aws-vpc-operator-to-docker
-          - push-aws-vpc-operator-to-quay
           - push-to-app-catalog
           filters:
             branches:

@@ -107,6 +107,11 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, microerror.Mask(err)
 	}
 
+	// We don't reconcile AWSClusters that have VPC managed by CAPA
+	if awsCluster.Spec.NetworkSpec.VPC.IsManaged(awsCluster.Name) {
+		return ctrl.Result{}, nil
+	}
+
 	//
 	// Create patch helper that will update reconciler AWSCLuster if there are any changes in the CR
 	//

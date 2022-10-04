@@ -19,3 +19,8 @@ pod:
   credentials:
     dir: /home/.aws
     filename: credentials
+
+aws:
+  accessKeyID: accesskey
+  secretAccessKey: secretkey
+  region: region

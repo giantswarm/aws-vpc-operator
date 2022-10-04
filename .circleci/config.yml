@@ -1,6 +1,12 @@
 version: 2.1
 orbs:
+<<<<<<< HEAD
   architect: giantswarm/architect@4.25.0
+||||||| parent of 548d91c (Update CircleCI config)
+  architect: giantswarm/architect@4.8.1
+=======
+  architect: giantswarm/architect@4.24.0
+>>>>>>> 548d91c (Update CircleCI config)
 
 workflows:
   package-and-push-chart-on-tag:
@@ -76,6 +82,8 @@ workflows:
           app_name: "aws-vpc-operator"
           app_collection_repo: "capa-app-collection"
           requires:
+          - push-aws-vpc-operator-to-docker
+          - push-aws-vpc-operator-to-quay
           - push-to-app-catalog
           filters:
             branches:

@@ -8,7 +8,7 @@ project:
 image:
   registry: quay.io
   name: giantswarm/aws-vpc-operator
-  tag: v0.0.1
+  tag: v0.1.0
   pullPolicy: IfNotPresent
 
 pod:

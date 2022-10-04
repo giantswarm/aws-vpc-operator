@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added Helm chart with Deployment, ServiceAccount, Secret.
 - Added ClusterRoles and ClusterRoleBindings.
 - Added PodSecurityPolicy.
+- Added NetworkPolicy.
 
 ### Changed
 

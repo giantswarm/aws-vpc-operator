@@ -63,13 +63,12 @@ func (s *reconciler) Reconcile(ctx context.Context, spec Spec) (Status, error) {
 			return Status{}, microerror.Mask(err)
 		}
 
-		status := Status{
-			VpcId:     getVpcOutput.VpcId,
-			CidrBlock: getVpcOutput.CidrBlock,
-			Tags:      getVpcOutput.Tags,
-		}
-
+		status := Status(getVpcOutput)
 		return status, nil
+	}
+
+	if spec.CidrBlock == "" {
+		spec.CidrBlock = defaultVPCCidr
 	}
 
 	//
@@ -84,11 +83,6 @@ func (s *reconciler) Reconcile(ctx context.Context, spec Spec) (Status, error) {
 		return Status{}, microerror.Mask(err)
 	}
 
-	status := Status{
-		VpcId:     createVpcOutput.VpcId,
-		CidrBlock: createVpcOutput.CidrBlock,
-		Tags:      createVpcOutput.Tags,
-	}
-
+	status := Status(createVpcOutput)
 	return status, nil
 }

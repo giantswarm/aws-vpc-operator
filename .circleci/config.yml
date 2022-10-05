@@ -1,12 +1,6 @@
 version: 2.1
 orbs:
-<<<<<<< HEAD
   architect: giantswarm/architect@4.25.0
-||||||| parent of 548d91c (Update CircleCI config)
-  architect: giantswarm/architect@4.8.1
-=======
-  architect: giantswarm/architect@4.24.0
->>>>>>> 548d91c (Update CircleCI config)
 
 workflows:
   package-and-push-chart-on-tag:

@@ -21,20 +21,20 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
-
-	"github.com/giantswarm/aws-vpc-operator/pkg/aws/vpc"
-	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
-
+	"github.com/giantswarm/k8smetadata/pkg/annotation"
 	"github.com/giantswarm/microerror"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
 	capi "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/vpc"
+	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
 // AWSClusterReconciler reconciles a AWSCluster object
@@ -105,6 +105,12 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	err := r.Client.Get(ctx, req.NamespacedName, awsCluster)
 	if err != nil {
 		return ctrl.Result{}, microerror.Mask(err)
+	}
+
+	// Check VPC mode. aws-vpc-operator reconciles only private VPCs.
+	vpcMode, vpcModeSet := awsCluster.Annotations[annotation.AWSVPCMode]
+	if !vpcModeSet || vpcMode != annotation.AWSVPCModePrivate {
+		return
 	}
 
 	// We don't reconcile AWSClusters that have VPC managed by CAPA

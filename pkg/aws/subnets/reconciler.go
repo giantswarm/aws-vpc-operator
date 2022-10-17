@@ -123,7 +123,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (R
 				VpcId:            spec.VpcId,
 				CidrBlock:        desiredSubnet.CidrBlock,
 				AvailabilityZone: desiredSubnet.AvailabilityZone,
-				Tags:             desiredSubnet.Tags,
+				Tags:             r.getSubnetTags(request.Spec.ClusterName, request.Spec.AdditionalTags, desiredSubnet),
 			}
 			output, err := r.client.Create(ctx, createSubnetInput)
 			if err != nil {
@@ -167,9 +167,6 @@ func findExistingSubnet(existingSubnets GetSubnetsOutput, desiredSubnet SubnetSp
 }
 
 func (r *reconciler) getSubnetTags(clusterName string, clusterTags map[string]string, spec SubnetSpec) map[string]string {
-
-	// 3. set static/fixed/predefined tags
-
 	var role string
 
 	// 1. set cluster-wide tags (coming from AWSCluster.AdditionalTags)

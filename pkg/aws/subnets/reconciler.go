@@ -112,10 +112,37 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (R
 	//
 	for _, desiredSubnet := range request.Spec.Subnets {
 		if existingSubnet, found := findExistingSubnet(existingSubnets, desiredSubnet); found {
-			// update tags from the existing subnet
+			if desiredSubnet.SubnetId == "" {
+				// since we already found the existing subnet, the desired subnet
+				// should already have SubnetId set, but here we set it just in
+				// case
+				desiredSubnet.SubnetId = existingSubnet.SubnetId
+			}
+			// ... check tags
+			desiredSubnetTags := r.getSubnetTags(request.Spec.ClusterName, request.Spec.AdditionalTags, desiredSubnet)
+
+			changedOrNewTags := tags.Diff(desiredSubnetTags, existingSubnet.Tags)
+			if len(changedOrNewTags) > 0 {
+				// update existing subnet
+				updateSubnetInput := UpdateSubnetInput{
+					RoleARN:  request.Spec.RoleARN,
+					SubnetId: existingSubnet.SubnetId,
+					Tags:     desiredSubnetTags,
+				}
+				_, err = r.client.Update(ctx, updateSubnetInput)
+				if err != nil {
+					return ReconcileResult{}, microerror.Mask(err)
+				}
+			}
 
 			// update results with existing subnet that we found here
-			result.Subnets = append(result.Subnets, SubnetStatus(existingSubnet))
+			result.Subnets = append(result.Subnets, SubnetStatus{
+				SubnetId:         existingSubnet.SubnetId,
+				VpcId:            existingSubnet.VpcId,
+				CidrBlock:        existingSubnet.CidrBlock,
+				AvailabilityZone: existingSubnet.AvailabilityZone,
+				Tags:             desiredSubnetTags,
+			})
 		} else {
 			// create new subnet
 			createSubnetInput := CreateSubnetInput{

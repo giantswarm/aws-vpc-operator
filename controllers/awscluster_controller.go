@@ -55,6 +55,9 @@ func NewAWSClusterReconciler(
 	ec2Client *ec2.Client,
 	assumeRoleAPIClient stscreds.AssumeRoleAPIClient,
 ) (*AWSClusterReconciler, error) {
+	if client == nil {
+		return nil, microerror.Maskf(errors.InvalidConfigError, "client must not be empty")
+	}
 	if ec2Client == nil {
 		return nil, microerror.Maskf(errors.InvalidConfigError, "ec2Client must not be empty")
 	}

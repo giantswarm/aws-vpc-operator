@@ -21,6 +21,7 @@ type GetVpcInput struct {
 type GetVpcOutput struct {
 	VpcId     string
 	CidrBlock string
+	State     VpcState
 	Tags      map[string]string
 }
 
@@ -60,6 +61,7 @@ func (c *client) Get(ctx context.Context, input GetVpcInput) (GetVpcOutput, erro
 	output := GetVpcOutput{
 		VpcId:     *ec2Output.Vpcs[0].VpcId,
 		CidrBlock: *ec2Output.Vpcs[0].CidrBlock,
+		State:     VpcState(ec2Output.Vpcs[0].State),
 		Tags:      TagsToMap(ec2Output.Vpcs[0].Tags),
 	}
 	logger.Info("Got existing VPC", "vpc-id", output.VpcId, "cidr-block", output.CidrBlock)

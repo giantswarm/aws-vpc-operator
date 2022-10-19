@@ -12,6 +12,14 @@ import (
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
+type VpcState string
+
+// Enum values for VpcState
+const (
+	VpcStatePending   VpcState = "pending"
+	VpcStateAvailable VpcState = "available"
+)
+
 type Client interface {
 	Create(ctx context.Context, input CreateVpcInput) (CreateVpcOutput, error)
 	Get(ctx context.Context, input GetVpcInput) (GetVpcOutput, error)

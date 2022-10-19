@@ -18,6 +18,7 @@ type CreateVpcInput struct {
 type CreateVpcOutput struct {
 	VpcId     string
 	CidrBlock string
+	State     VpcState
 	Tags      map[string]string
 }
 
@@ -45,6 +46,7 @@ func (c *client) Create(ctx context.Context, input CreateVpcInput) (CreateVpcOut
 	output := CreateVpcOutput{
 		VpcId:     *ec2Output.Vpc.VpcId,
 		CidrBlock: *ec2Output.Vpc.CidrBlock,
+		State:     VpcState(ec2Output.Vpc.State),
 		Tags:      TagsToMap(ec2Output.Vpc.Tags),
 	}
 	logger.Info("Created new VPC with CIDR", "vpc-id", output.VpcId, "cidr-block", output.CidrBlock)

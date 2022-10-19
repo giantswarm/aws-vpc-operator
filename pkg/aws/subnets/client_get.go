@@ -31,6 +31,7 @@ type GetSubnetOutput struct {
 	VpcId            string
 	CidrBlock        string
 	AvailabilityZone string
+	State            SubnetState
 	Tags             map[string]string
 }
 
@@ -67,11 +68,22 @@ func (c *client) Get(ctx context.Context, input GetSubnetsInput) (GetSubnetsOutp
 	output := make(GetSubnetsOutput, len(ec2Output.Subnets))
 
 	for _, ec2Subnet := range ec2Output.Subnets {
+		var subnetState SubnetState
+		switch ec2Subnet.State {
+		case ec2Types.SubnetStatePending:
+			subnetState = SubnetStatePending
+		case ec2Types.SubnetStateAvailable:
+			subnetState = SubnetStateAvailable
+		default:
+			subnetState = SubnetStateUnknown
+		}
+
 		output = append(output, GetSubnetOutput{
 			SubnetId:         *ec2Subnet.SubnetId,
 			VpcId:            *ec2Subnet.VpcId,
 			CidrBlock:        *ec2Subnet.CidrBlock,
 			AvailabilityZone: *ec2Subnet.AvailabilityZone,
+			State:            subnetState,
 			Tags:             TagsToMap(ec2Subnet.Tags),
 		})
 	}

@@ -23,6 +23,7 @@ type Spec struct {
 type Status struct {
 	VpcId     string
 	CidrBlock string
+	State     VpcState
 	Tags      map[string]string
 }
 

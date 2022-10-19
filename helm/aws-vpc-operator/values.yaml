@@ -6,9 +6,9 @@ project:
   commit: "[[ .SHA ]]"
 
 image:
-  registry: quay.io
+  registry: docker.io
   name: giantswarm/aws-vpc-operator
-  tag: v0.1.0
+  tag: "[[ .Version ]]"
   pullPolicy: IfNotPresent
 
 pod:

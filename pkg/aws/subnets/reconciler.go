@@ -48,6 +48,7 @@ type SubnetStatus struct {
 	VpcId            string
 	CidrBlock        string
 	AvailabilityZone string
+	State            SubnetState
 	Tags             map[string]string
 }
 
@@ -141,6 +142,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (R
 				VpcId:            existingSubnet.VpcId,
 				CidrBlock:        existingSubnet.CidrBlock,
 				AvailabilityZone: existingSubnet.AvailabilityZone,
+				State:            existingSubnet.State,
 				Tags:             desiredSubnetTags,
 			})
 		} else {
@@ -158,13 +160,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (R
 			}
 
 			// update results with new subnet that we created here
-			result.Subnets = append(result.Subnets, SubnetStatus{
-				SubnetId:         output.SubnetId,
-				VpcId:            output.VpcId,
-				CidrBlock:        output.CidrBlock,
-				AvailabilityZone: output.AvailabilityZone,
-				Tags:             output.Tags,
-			})
+			result.Subnets = append(result.Subnets, SubnetStatus(output))
 		}
 	}
 	// First we find the subnets that are already created (i.e. the desired ones

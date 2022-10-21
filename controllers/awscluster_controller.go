@@ -118,14 +118,25 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	log.Info("Started reconciling AWSCluster", "namespace", req.Namespace, "name", req.Name)
 	defer log.Info("Finished reconciling AWSCluster", "namespace", req.Namespace, "name", req.Name)
 
+	if r.Client == nil {
+		panic("client is nil")
+	}
+
+	if ctx == nil {
+		panic("ctx is nil")
+	}
+
 	//
 	// Get AWSCluster that we are reconciling
 	//
 	awsCluster := &capa.AWSCluster{}
+
+	log.Info("trying to get cluster", "namespace", req.Namespace, "name", req.Name)
 	err := r.Client.Get(ctx, req.NamespacedName, awsCluster)
 	if err != nil {
 		return ctrl.Result{}, microerror.Mask(err)
 	}
+	log.Info("got cluster", "namespace", req.Namespace, "name", req.Name)
 
 	// Check VPC mode. aws-vpc-operator reconciles only private VPCs.
 	vpcMode, vpcModeSet := awsCluster.Annotations[annotation.AWSVPCMode]

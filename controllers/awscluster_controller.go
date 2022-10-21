@@ -118,6 +118,10 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	log.Info("Started reconciling AWSCluster", "namespace", req.Namespace, "name", req.Name)
 	defer log.Info("Finished reconciling AWSCluster", "namespace", req.Namespace, "name", req.Name)
 
+	if r == nil {
+		panic("AWSClusterReconciler r is nil :scream:")
+	}
+
 	if r.Client == nil {
 		panic("client is nil")
 	}

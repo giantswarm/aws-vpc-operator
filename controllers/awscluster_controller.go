@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
@@ -131,12 +132,14 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Check VPC mode. aws-vpc-operator reconciles only private VPCs.
 	vpcMode, vpcModeSet := awsCluster.Annotations[annotation.AWSVPCMode]
 	if !vpcModeSet || vpcMode != annotation.AWSVPCModePrivate {
+		var message string
+		if !vpcModeSet {
+			message = fmt.Sprintf("Annotation %s is not set, skipping", annotation.AWSVPCMode)
+		} else {
+			message = fmt.Sprintf("Annotation %s set to %s, skipping", annotation.AWSVPCMode, vpcMode)
+		}
+		log.Info(message, "namespace", req.Namespace, "name", req.Name)
 		return
-	}
-
-	// We don't reconcile AWSClusters that have VPC managed by CAPA
-	if awsCluster.Spec.NetworkSpec.VPC.IsManaged(awsCluster.Name) {
-		return ctrl.Result{}, nil
 	}
 
 	//

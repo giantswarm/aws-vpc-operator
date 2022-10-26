@@ -55,6 +55,10 @@ spec:
         env:
         - name: AWS_SHARED_CREDENTIALS_FILE
           value: {{ .Values.pod.credentials.dir }}/{{ .Values.pod.credentials.filename }}
+        - name: AWS_REGION
+          value: "{{ .Values.aws.region }}"
+        - name: AWS_DEFAULT_REGION
+          value: "{{ .Values.aws.region }}"
       terminationGracePeriodSeconds: 10
       volumes:
       - name: {{ .Values.pod.credentials.filename }}

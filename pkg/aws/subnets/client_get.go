@@ -20,6 +20,7 @@ const (
 
 type GetSubnetsInput struct {
 	RoleARN     string
+	Region      string
 	VpcId       string
 	ClusterName string
 }
@@ -43,6 +44,9 @@ func (c *client) Get(ctx context.Context, input GetSubnetsInput) (GetSubnetsOutp
 	if input.RoleARN == "" {
 		return GetSubnetsOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
 	}
+	if input.Region == "" {
+		return GetSubnetsOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
+	}
 	if input.VpcId == "" {
 		return GetSubnetsOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
@@ -60,7 +64,7 @@ func (c *client) Get(ctx context.Context, input GetSubnetsInput) (GetSubnetsOutp
 		},
 	}
 
-	ec2Output, err := c.ec2Client.DescribeSubnets(ctx, &ec2Input, c.assumeRoleFunc(input.RoleARN))
+	ec2Output, err := c.ec2Client.DescribeSubnets(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
 	if err != nil {
 		return GetSubnetsOutput{}, microerror.Mask(err)
 	}

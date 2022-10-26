@@ -15,6 +15,7 @@ import (
 
 type CreateTagsInput struct {
 	RoleARN    string
+	Region     string
 	ResourceId string
 	Tags       map[string]string
 }
@@ -26,6 +27,9 @@ func (c *client) Create(ctx context.Context, input CreateTagsInput) error {
 
 	if input.RoleARN == "" {
 		return microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
+	}
+	if input.Region == "" {
+		return microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
 	}
 	if input.ResourceId == "" {
 		return microerror.Maskf(errors.InvalidConfigError, "%T.ResourceId must not be empty", input)
@@ -52,7 +56,7 @@ func (c *client) Create(ctx context.Context, input CreateTagsInput) error {
 		Tags:      tags,
 	}
 
-	_, err := c.ec2Client.CreateTags(ctx, &ec2Input, c.assumeRoleFunc(input.RoleARN))
+	_, err := c.ec2Client.CreateTags(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
 	if err != nil {
 		return microerror.Mask(err)
 	}

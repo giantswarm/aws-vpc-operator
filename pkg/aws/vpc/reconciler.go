@@ -16,6 +16,7 @@ const (
 type Spec struct {
 	ClusterName string
 	RoleARN     string
+	Region      string
 	VpcId       string
 	CidrBlock   string
 }
@@ -50,12 +51,23 @@ func (s *reconciler) Reconcile(ctx context.Context, spec Spec) (Status, error) {
 	logger.Info("Started reconciling VPC")
 	defer logger.Info("Finished reconciling VPC")
 
+	if spec.ClusterName == "" {
+		return Status{}, microerror.Maskf(errors.InvalidConfigError, "%T.ClusterName must not be empty", spec)
+	}
+	if spec.RoleARN == "" {
+		return Status{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", spec)
+	}
+	if spec.Region == "" {
+		return Status{}, microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", spec)
+	}
+
 	if spec.VpcId != "" {
 		//
 		// Get existing VPC and return status
 		//
 		getVpcInput := GetVpcInput{
 			RoleARN:     spec.RoleARN,
+			Region:      spec.Region,
 			VpcId:       spec.VpcId,
 			ClusterName: spec.ClusterName,
 		}
@@ -77,6 +89,7 @@ func (s *reconciler) Reconcile(ctx context.Context, spec Spec) (Status, error) {
 	//
 	createVpcInput := CreateVpcInput{
 		RoleARN:   spec.RoleARN,
+		Region:    spec.Region,
 		CidrBlock: spec.CidrBlock,
 	}
 	createVpcOutput, err := s.client.Create(ctx, createVpcInput)

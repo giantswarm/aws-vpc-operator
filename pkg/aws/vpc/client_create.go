@@ -12,6 +12,7 @@ import (
 
 type CreateVpcInput struct {
 	RoleARN   string
+	Region    string
 	CidrBlock string
 }
 
@@ -30,6 +31,9 @@ func (c *client) Create(ctx context.Context, input CreateVpcInput) (CreateVpcOut
 	if input.RoleARN == "" {
 		return CreateVpcOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
 	}
+	if input.Region == "" {
+		return CreateVpcOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
+	}
 	if input.CidrBlock == "" {
 		return CreateVpcOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.CidrBlock must not be empty", input)
 	}
@@ -38,7 +42,7 @@ func (c *client) Create(ctx context.Context, input CreateVpcInput) (CreateVpcOut
 		CidrBlock: &input.CidrBlock,
 	}
 
-	ec2Output, err := c.ec2Client.CreateVpc(ctx, &ec2Input, c.assumeRoleFunc(input.RoleARN))
+	ec2Output, err := c.ec2Client.CreateVpc(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
 	if err != nil {
 		return CreateVpcOutput{}, microerror.Mask(err)
 	}

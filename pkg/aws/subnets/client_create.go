@@ -14,6 +14,7 @@ import (
 
 type CreateSubnetInput struct {
 	RoleARN          string
+	Region           string
 	VpcId            string
 	CidrBlock        string
 	AvailabilityZone string
@@ -46,6 +47,9 @@ func (c *client) Create(ctx context.Context, input CreateSubnetInput) (CreateSub
 	if input.RoleARN == "" {
 		return CreateSubnetOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
 	}
+	if input.Region == "" {
+		return CreateSubnetOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
+	}
 	if input.VpcId == "" {
 		return CreateSubnetOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
@@ -66,7 +70,7 @@ func (c *client) Create(ctx context.Context, input CreateSubnetInput) (CreateSub
 		},
 	}
 
-	ec2Output, err := c.ec2Client.CreateSubnet(ctx, &ec2Input, c.assumeRoleFunc(input.RoleARN))
+	ec2Output, err := c.ec2Client.CreateSubnet(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
 	if err != nil {
 		return CreateSubnetOutput{}, microerror.Mask(err)
 	}

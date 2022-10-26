@@ -27,6 +27,7 @@ type ReconcileRequest struct {
 type Spec struct {
 	ClusterName    string
 	RoleARN        string
+	Region         string
 	VpcId          string
 	Subnets        []SubnetSpec
 	AdditionalTags map[string]string
@@ -86,6 +87,9 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (R
 	if spec.RoleARN == "" {
 		return ReconcileResult{}, microerror.Maskf(errors.InvalidConfigError, "RoleARN must not be empty")
 	}
+	if spec.Region == "" {
+		return ReconcileResult{}, microerror.Maskf(errors.InvalidConfigError, "Region must not be empty")
+	}
 	if spec.VpcId == "" {
 		return ReconcileResult{}, microerror.Maskf(errors.InvalidConfigError, "VpcId must not be empty")
 	}
@@ -99,6 +103,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (R
 	//
 	getSubnetsInput := GetSubnetsInput{
 		RoleARN:     spec.RoleARN,
+		Region:      spec.Region,
 		VpcId:       spec.VpcId,
 		ClusterName: spec.ClusterName,
 	}
@@ -127,6 +132,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (R
 				// update existing subnet
 				updateSubnetInput := UpdateSubnetInput{
 					RoleARN:  request.Spec.RoleARN,
+					Region:   spec.Region,
 					SubnetId: existingSubnet.SubnetId,
 					Tags:     desiredSubnetTags,
 				}
@@ -149,6 +155,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (R
 			// create new subnet
 			createSubnetInput := CreateSubnetInput{
 				RoleARN:          spec.RoleARN,
+				Region:           spec.Region,
 				VpcId:            spec.VpcId,
 				CidrBlock:        desiredSubnet.CidrBlock,
 				AvailabilityZone: desiredSubnet.AvailabilityZone,

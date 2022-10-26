@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/giantswarm/aws-vpc-operator/controllers"
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/assumerole"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -104,12 +105,17 @@ func main() {
 	}
 	ec2Client := ec2.NewFromConfig(cfg)
 	assumeRoleAPIClient := sts.NewFromConfig(cfg)
+	assumeRoleClient, err := assumerole.NewClient(assumeRoleAPIClient)
+	if err != nil {
+		setupLog.Error(err, "unable to create client for assuming roles")
+		os.Exit(1)
+	}
 
 	awsReconciler, err := controllers.NewAWSClusterReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		ec2Client,
-		assumeRoleAPIClient,
+		assumeRoleClient,
 	)
 	if err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AWSCluster")

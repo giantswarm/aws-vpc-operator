@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/giantswarm/k8smetadata/pkg/annotation"
 	"github.com/giantswarm/microerror"
@@ -35,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/assumerole"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/subnets"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/vpc"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
@@ -54,7 +54,7 @@ func NewAWSClusterReconciler(
 	client client.Client,
 	scheme *runtime.Scheme,
 	ec2Client *ec2.Client,
-	assumeRoleAPIClient stscreds.AssumeRoleAPIClient,
+	assumeRoleClient assumerole.Client,
 ) (*AWSClusterReconciler, error) {
 	if client == nil {
 		return nil, microerror.Maskf(errors.InvalidConfigError, "client must not be empty")
@@ -62,13 +62,13 @@ func NewAWSClusterReconciler(
 	if ec2Client == nil {
 		return nil, microerror.Maskf(errors.InvalidConfigError, "ec2Client must not be empty")
 	}
-	if assumeRoleAPIClient == nil {
-		return nil, microerror.Maskf(errors.InvalidConfigError, "assumeRoleAPIClient must not be empty")
+	if assumeRoleClient == nil {
+		return nil, microerror.Maskf(errors.InvalidConfigError, "assumeRoleClient must not be empty")
 	}
 
 	var vpcReconciler vpc.Reconciler
 	{
-		vpcClient, err := vpc.NewClient(ec2Client, assumeRoleAPIClient)
+		vpcClient, err := vpc.NewClient(ec2Client, assumeRoleClient)
 		if err != nil {
 			return nil, microerror.Mask(err)
 		}
@@ -81,7 +81,7 @@ func NewAWSClusterReconciler(
 
 	var subnetsReconciler subnets.Reconciler
 	{
-		subnetsClient, err := subnets.NewClient(ec2Client, assumeRoleAPIClient)
+		subnetsClient, err := subnets.NewClient(ec2Client, assumeRoleClient)
 		if err != nil {
 			return nil, microerror.Mask(err)
 		}
@@ -185,6 +185,7 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	vpcSpec := vpc.Spec{
 		ClusterName: awsCluster.Name,
 		RoleARN:     identity.Spec.RoleArn,
+		Region:      awsCluster.Spec.Region,
 		VpcId:       awsCluster.Spec.NetworkSpec.VPC.ID,
 		CidrBlock:   awsCluster.Spec.NetworkSpec.VPC.CidrBlock,
 	}

@@ -12,6 +12,7 @@ import (
 
 type UpdateSubnetInput struct {
 	RoleARN  string
+	Region   string
 	SubnetId string
 	Tags     map[string]string
 }
@@ -27,6 +28,9 @@ func (c *client) Update(ctx context.Context, input UpdateSubnetInput) (UpdateSub
 	if input.RoleARN == "" {
 		return UpdateSubnetOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
 	}
+	if input.Region == "" {
+		return UpdateSubnetOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
+	}
 	if input.SubnetId == "" {
 		return UpdateSubnetOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.SubnetId must not be empty", input)
 	}
@@ -34,6 +38,7 @@ func (c *client) Update(ctx context.Context, input UpdateSubnetInput) (UpdateSub
 	// update subnet tags
 	createTagsInput := tags.CreateTagsInput{
 		RoleARN:    input.RoleARN,
+		Region:     input.Region,
 		ResourceId: input.SubnetId,
 		Tags:       input.Tags,
 	}

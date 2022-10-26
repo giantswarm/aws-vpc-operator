@@ -13,6 +13,7 @@ import (
 
 type DeleteVpcInput struct {
 	RoleARN string
+	Region  string
 	VpcId   string
 }
 
@@ -24,6 +25,9 @@ func (c *client) Delete(ctx context.Context, input DeleteVpcInput) error {
 	if input.RoleARN == "" {
 		return microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
 	}
+	if input.Region == "" {
+		return microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
+	}
 	if input.VpcId == "" {
 		return microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
@@ -31,7 +35,7 @@ func (c *client) Delete(ctx context.Context, input DeleteVpcInput) error {
 	ec2Input := ec2.DeleteVpcInput{
 		VpcId: aws.String(input.VpcId),
 	}
-	_, err := c.ec2Client.DeleteVpc(ctx, &ec2Input, c.assumeRoleFunc(input.RoleARN))
+	_, err := c.ec2Client.DeleteVpc(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
 	if err != nil {
 		return microerror.Mask(err)
 	}

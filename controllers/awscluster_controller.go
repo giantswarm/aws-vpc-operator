@@ -183,11 +183,12 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	vpcSpec := vpc.Spec{
-		ClusterName: awsCluster.Name,
-		RoleARN:     identity.Spec.RoleArn,
-		Region:      awsCluster.Spec.Region,
-		VpcId:       awsCluster.Spec.NetworkSpec.VPC.ID,
-		CidrBlock:   awsCluster.Spec.NetworkSpec.VPC.CidrBlock,
+		ClusterName:    awsCluster.Name,
+		RoleARN:        identity.Spec.RoleArn,
+		Region:         awsCluster.Spec.Region,
+		VpcId:          awsCluster.Spec.NetworkSpec.VPC.ID,
+		CidrBlock:      awsCluster.Spec.NetworkSpec.VPC.CidrBlock,
+		AdditionalTags: awsCluster.Spec.AdditionalTags,
 	}
 	status, err := r.vpcReconciler.Reconcile(ctx, vpcSpec)
 	if err != nil {

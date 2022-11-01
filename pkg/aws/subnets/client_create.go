@@ -71,7 +71,6 @@ func (c *client) Create(ctx context.Context, input CreateSubnetInput) (output Cr
 		CidrBlock:        &input.CidrBlock,
 		AvailabilityZone: &input.AvailabilityZone,
 		TagSpecifications: []ec2Types.TagSpecification{
-			// tags.CreateTagSpecification(input.NameTagValue, ec2Types.ResourceTypeSubnet, input.Tags),
 			tags.BuildParamsToTagSpecification(ec2Types.ResourceTypeSubnet, input.Tags),
 		},
 	}

@@ -39,10 +39,16 @@ type CreateSubnetOutput struct {
 	Tags             map[string]string
 }
 
-func (c *client) Create(ctx context.Context, input CreateSubnetInput) (CreateSubnetOutput, error) {
+func (c *client) Create(ctx context.Context, input CreateSubnetInput) (output CreateSubnetOutput, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Started creating subnet")
-	defer logger.Info("Finished creating subnet")
+	defer func() {
+		if err == nil {
+			logger.Info("Finished creating subnet")
+		} else {
+			logger.Error(err, "Failed to create subnet")
+		}
+	}()
 
 	if input.RoleARN == "" {
 		return CreateSubnetOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
@@ -85,7 +91,7 @@ func (c *client) Create(ctx context.Context, input CreateSubnetInput) (CreateSub
 		subnetState = SubnetStateUnknown
 	}
 
-	output := CreateSubnetOutput{
+	output = CreateSubnetOutput{
 		SubnetId:         *ec2Output.Subnet.SubnetId,
 		VpcId:            *ec2Output.Subnet.VpcId,
 		CidrBlock:        *ec2Output.Subnet.CidrBlock,

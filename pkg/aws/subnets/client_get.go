@@ -36,10 +36,16 @@ type GetSubnetOutput struct {
 	Tags             map[string]string
 }
 
-func (c *client) Get(ctx context.Context, input GetSubnetsInput) (GetSubnetsOutput, error) {
+func (c *client) Get(ctx context.Context, input GetSubnetsInput) (output GetSubnetsOutput, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Started getting subnet")
-	defer logger.Info("Finished getting subnet")
+	defer func() {
+		if err == nil {
+			logger.Info("Finished getting subnet")
+		} else {
+			logger.Error(err, "Failed to get subnet")
+		}
+	}()
 
 	if input.RoleARN == "" {
 		return GetSubnetsOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
@@ -69,8 +75,7 @@ func (c *client) Get(ctx context.Context, input GetSubnetsInput) (GetSubnetsOutp
 		return GetSubnetsOutput{}, microerror.Mask(err)
 	}
 
-	output := make(GetSubnetsOutput, len(ec2Output.Subnets))
-
+	output = make(GetSubnetsOutput, len(ec2Output.Subnets))
 	for _, ec2Subnet := range ec2Output.Subnets {
 		var subnetState SubnetState
 		switch ec2Subnet.State {

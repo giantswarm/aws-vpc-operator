@@ -4,9 +4,11 @@ import (
 	"context"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/giantswarm/microerror"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/tags"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
@@ -14,6 +16,7 @@ type CreateVpcInput struct {
 	RoleARN   string
 	Region    string
 	CidrBlock string
+	Tags      map[string]string
 }
 
 type CreateVpcOutput struct {
@@ -40,6 +43,9 @@ func (c *client) Create(ctx context.Context, input CreateVpcInput) (CreateVpcOut
 
 	ec2Input := ec2.CreateVpcInput{
 		CidrBlock: &input.CidrBlock,
+		TagSpecifications: []ec2Types.TagSpecification{
+			tags.BuildParamsToTagSpecification(ec2Types.ResourceTypeVpc, input.Tags),
+		},
 	}
 
 	ec2Output, err := c.ec2Client.CreateVpc(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))

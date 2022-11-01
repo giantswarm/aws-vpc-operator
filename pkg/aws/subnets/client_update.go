@@ -20,10 +20,16 @@ type UpdateSubnetInput struct {
 type UpdateSubnetOutput struct {
 }
 
-func (c *client) Update(ctx context.Context, input UpdateSubnetInput) (UpdateSubnetOutput, error) {
+func (c *client) Update(ctx context.Context, input UpdateSubnetInput) (output UpdateSubnetOutput, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Started updating subnet")
-	defer logger.Info("Finished updating subnet")
+	defer func() {
+		if err == nil {
+			logger.Info("Finished updating subnet")
+		} else {
+			logger.Error(err, "Failed to update subnet")
+		}
+	}()
 
 	if input.RoleARN == "" {
 		return UpdateSubnetOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
@@ -42,7 +48,7 @@ func (c *client) Update(ctx context.Context, input UpdateSubnetInput) (UpdateSub
 		ResourceId: input.SubnetId,
 		Tags:       input.Tags,
 	}
-	err := c.tagsClient.Create(ctx, createTagsInput)
+	err = c.tagsClient.Create(ctx, createTagsInput)
 	if err != nil {
 		return UpdateSubnetOutput{}, microerror.Mask(err)
 	}

@@ -71,11 +71,18 @@ type reconciler struct {
 	client Client
 }
 
-func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (ReconcileResult, error) {
+func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (result ReconcileResult, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Started reconciling subnets")
-	defer logger.Info("Finished reconciling subnets")
-	result := ReconcileResult{
+	defer func() {
+		if err == nil {
+			logger.Info("Finished reconciling subnets")
+		} else {
+			logger.Error(err, "Failed to reconcile subnets")
+		}
+	}()
+
+	result = ReconcileResult{
 		Subnets: []SubnetStatus{},
 	}
 

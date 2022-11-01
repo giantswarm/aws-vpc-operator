@@ -3,9 +3,7 @@ package vpc
 import (
 	"context"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/giantswarm/microerror"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -43,12 +41,6 @@ func (c *client) Get(ctx context.Context, input GetVpcInput) (GetVpcOutput, erro
 
 	ec2Input := ec2.DescribeVpcsInput{
 		VpcIds: []string{input.VpcId},
-		Filters: []ec2Types.Filter{
-			{
-				Name:   aws.String("state"),
-				Values: []string{string(ec2Types.VpcStatePending), string(ec2Types.VpcStatePending)},
-			},
-		},
 	}
 
 	ec2Output, err := c.ec2Client.DescribeVpcs(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))

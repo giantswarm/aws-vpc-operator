@@ -7,54 +7,15 @@ import (
 	"github.com/giantswarm/microerror"
 	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
 	capaservices "sigs.k8s.io/cluster-api-provider-aws/pkg/cloud/services"
-	"sigs.k8s.io/cluster-api/util/conditions"
 
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/tags"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
-// ReconcileRequest specified which resource is being reconciled and what is
-// the specification of the desired subnets.
-type ReconcileRequest struct {
-	// Resource that is being reconciled.
-	Resource conditions.Setter
-
-	// Spec of the desired subnets.
-	Spec Spec
-}
-
-type Spec struct {
-	ClusterName    string
-	RoleARN        string
-	Region         string
-	VpcId          string
-	Subnets        []SubnetSpec
-	AdditionalTags map[string]string
-}
-
-type SubnetSpec struct {
-	SubnetId         string
-	CidrBlock        string
-	AvailabilityZone string
-	Tags             map[string]string
-}
-
-type ReconcileResult struct {
-	Subnets []SubnetStatus
-}
-
-type SubnetStatus struct {
-	SubnetId         string
-	VpcId            string
-	CidrBlock        string
-	AvailabilityZone string
-	State            SubnetState
-	Tags             map[string]string
-}
-
 type Reconciler interface {
 	Reconcile(ctx context.Context, request ReconcileRequest) (ReconcileResult, error)
-	ReconcileDelete(ctx context.Context, request ReconcileDeleteRequest) error
+	ReconcileDelete(ctx context.Context, request aws.ReconcileDeleteAllRequest) error
 }
 
 func NewReconciler(client Client) (Reconciler, error) {

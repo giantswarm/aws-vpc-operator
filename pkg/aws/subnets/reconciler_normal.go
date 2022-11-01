@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/giantswarm/microerror"
+	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/tags"
@@ -127,4 +128,43 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (r
 	}
 
 	return result, nil
+}
+
+// ReconcileRequest specified which resource is being reconciled and what is
+// the specification of the desired subnets.
+type ReconcileRequest struct {
+	// Resource that is being reconciled.
+	Resource conditions.Setter
+
+	// Spec of the desired subnets.
+	Spec Spec
+}
+
+type Spec struct {
+	ClusterName    string
+	RoleARN        string
+	Region         string
+	VpcId          string
+	Subnets        []SubnetSpec
+	AdditionalTags map[string]string
+}
+
+type SubnetSpec struct {
+	SubnetId         string
+	CidrBlock        string
+	AvailabilityZone string
+	Tags             map[string]string
+}
+
+type ReconcileResult struct {
+	Subnets []SubnetStatus
+}
+
+type SubnetStatus struct {
+	SubnetId         string
+	VpcId            string
+	CidrBlock        string
+	AvailabilityZone string
+	State            SubnetState
+	Tags             map[string]string
 }

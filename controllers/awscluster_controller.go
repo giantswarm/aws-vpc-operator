@@ -32,12 +32,17 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/assumerole"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/subnets"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/vpc"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
+)
+
+const (
+	AwsVpcOperatorFinalizer = "aws-vpc-operator.finalizers.giantswarm.io"
 )
 
 // AWSClusterReconciler reconciles a AWSCluster object
@@ -182,9 +187,20 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, microerror.Mask(err)
 	}
 
+	if !awsCluster.DeletionTimestamp.IsZero() {
+		return r.reconcileDelete(ctx, awsCluster, identity.Spec.RoleArn)
+	}
+
+	return r.reconcileNormal(ctx, awsCluster, identity.Spec.RoleArn)
+}
+
+func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, reterr error) {
+	// If the AWSCluster doesn't have our finalizer, add it.
+	controllerutil.AddFinalizer(awsCluster, AwsVpcOperatorFinalizer)
+
 	vpcSpec := vpc.Spec{
 		ClusterName:    awsCluster.Name,
-		RoleARN:        identity.Spec.RoleArn,
+		RoleARN:        roleArn,
 		Region:         awsCluster.Spec.Region,
 		VpcId:          awsCluster.Spec.NetworkSpec.VPC.ID,
 		CidrBlock:      awsCluster.Spec.NetworkSpec.VPC.CidrBlock,
@@ -220,7 +236,7 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		Resource: awsCluster,
 		Spec: subnets.Spec{
 			ClusterName:    awsCluster.Name,
-			RoleARN:        identity.Spec.RoleArn,
+			RoleARN:        roleArn,
 			VpcId:          awsCluster.Spec.NetworkSpec.VPC.ID,
 			AdditionalTags: awsCluster.Spec.AdditionalTags,
 			Region:         awsCluster.Spec.Region,
@@ -265,6 +281,35 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
+	return ctrl.Result{}, nil
+}
+
+func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, err error) {
+	//
+	// Delete subnets
+	//
+	subnetsDeleteRequest := subnets.ReconcileDeleteRequest{
+		Resource: awsCluster,
+		Spec: subnets.DeletedSpec{
+			ClusterName: awsCluster.Name,
+			RoleARN:     roleArn,
+			Region:      awsCluster.Spec.Region,
+		},
+	}
+	for _, awsSubnetSpec := range awsCluster.Spec.NetworkSpec.Subnets {
+		subnetSpec := subnets.DeletedSubnetSpec{
+			SubnetId: awsSubnetSpec.ID,
+		}
+		subnetsDeleteRequest.Spec.Subnets = append(subnetsDeleteRequest.Spec.Subnets, subnetSpec)
+	}
+	err = r.subnetsReconciler.ReconcileDelete(ctx, subnetsDeleteRequest)
+	if err != nil {
+		return ctrl.Result{}, microerror.Mask(err)
+	}
+	conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "Subnets are deleted")
+
+	// Cluster is deleted so remove the finalizer.
+	controllerutil.RemoveFinalizer(awsCluster, AwsVpcOperatorFinalizer)
 	return ctrl.Result{}, nil
 }
 

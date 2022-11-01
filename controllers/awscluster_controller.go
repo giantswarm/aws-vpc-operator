@@ -222,6 +222,7 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			RoleARN:        identity.Spec.RoleArn,
 			VpcId:          awsCluster.Spec.NetworkSpec.VPC.ID,
 			AdditionalTags: awsCluster.Spec.AdditionalTags,
+			Region:         awsCluster.Spec.Region,
 		},
 	}
 	for _, awsSubnetSpec := range awsCluster.Spec.NetworkSpec.Subnets {

@@ -198,11 +198,18 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	awsCluster.Spec.NetworkSpec.VPC.ID = status.VpcId
 	awsCluster.Spec.NetworkSpec.VPC.CidrBlock = status.CidrBlock
 	awsCluster.Spec.NetworkSpec.VPC.Tags = status.Tags
-	if status.State == vpc.VpcStateAvailable {
+	switch status.State {
+	case vpc.VpcStateAvailable:
 		conditions.MarkTrue(awsCluster, capa.VpcReadyCondition)
-	} else {
-		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, "VpcNotAvailable", capi.ConditionSeverityWarning, "VPC is still not available")
+	case vpc.VpcStatePending:
+		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, "VpcStatePending", capi.ConditionSeverityWarning, "VPC is in pending state")
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	case "":
+		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, "VpcStateNotSet", capi.ConditionSeverityError, "VPC state is not set")
+		return ctrl.Result{}, microerror.Maskf(errors.VpcStateNotSetError, "VPC state is not set '%s'", status.State)
+	default:
+		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, "VpcStateUnknown", capi.ConditionSeverityError, "VPC is in unknown state")
+		return ctrl.Result{}, microerror.Maskf(errors.VpcStateUnknownError, "VPC is in unknown state '%s'", status.State)
 	}
 
 	//

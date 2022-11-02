@@ -24,11 +24,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/giantswarm/k8smetadata/pkg/annotation"
 	"github.com/giantswarm/microerror"
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
 	capi "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
+	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -189,13 +191,13 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if !awsCluster.DeletionTimestamp.IsZero() {
-		return r.reconcileDelete(ctx, awsCluster, identity.Spec.RoleArn)
+		return r.reconcileDelete(ctx, log, awsCluster, identity.Spec.RoleArn)
 	}
 
-	return r.reconcileNormal(ctx, awsCluster, identity.Spec.RoleArn)
+	return r.reconcileNormal(ctx, log, awsCluster, identity.Spec.RoleArn)
 }
 
-func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, reterr error) {
+func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, reterr error) {
 	// If the AWSCluster doesn't have our finalizer, add it.
 	controllerutil.AddFinalizer(awsCluster, AwsVpcOperatorFinalizer)
 
@@ -285,49 +287,74 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, awsCluster *
 	return ctrl.Result{}, nil
 }
 
-func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, err error) {
+func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, err error) {
 	//
 	// Delete subnets
 	//
-	subnetsDeleteRequest := aws.ReconcileRequest[[]aws.DeletedCloudResourceSpec]{
-		Resource:    awsCluster,
-		ClusterName: awsCluster.Name,
-		CloudResourceRequest: aws.CloudResourceRequest[[]aws.DeletedCloudResourceSpec]{
-			RoleARN: roleArn,
-			Region:  awsCluster.Spec.Region,
-		},
-	}
-	for _, awsSubnetSpec := range awsCluster.Spec.NetworkSpec.Subnets {
-		deletedSubnetSpec := aws.DeletedCloudResourceSpec{
-			Id: awsSubnetSpec.ID,
+	subnetsDeleted := capiconditions.IsFalse(awsCluster, capa.SubnetsReadyCondition) &&
+		capiconditions.GetReason(awsCluster, capa.SubnetsReadyCondition) == capi.DeletedReason
+	if subnetsDeleted {
+		logger.Info("Subnets are already deleted")
+	} else {
+		logger.Info("Deleting subnets")
+		subnetsDeleteRequest := aws.ReconcileRequest[[]aws.DeletedCloudResourceSpec]{
+			Resource:    awsCluster,
+			ClusterName: awsCluster.Name,
+			CloudResourceRequest: aws.CloudResourceRequest[[]aws.DeletedCloudResourceSpec]{
+				RoleARN: roleArn,
+				Region:  awsCluster.Spec.Region,
+			},
 		}
-		subnetsDeleteRequest.Spec = append(subnetsDeleteRequest.Spec, deletedSubnetSpec)
+		for _, awsSubnetSpec := range awsCluster.Spec.NetworkSpec.Subnets {
+			if awsSubnetSpec.ID != "" {
+				deletedSubnetSpec := aws.DeletedCloudResourceSpec{
+					Id: awsSubnetSpec.ID,
+				}
+				subnetsDeleteRequest.Spec = append(subnetsDeleteRequest.Spec, deletedSubnetSpec)
+			}
+		}
+		err = r.subnetsReconciler.ReconcileDelete(ctx, subnetsDeleteRequest)
+		if err != nil {
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+		// remove subnet IDs
+		for i := range awsCluster.Spec.NetworkSpec.Subnets {
+			awsCluster.Spec.NetworkSpec.Subnets[i].ID = ""
+		}
+		conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "Subnets have been deleted")
+		logger.Info("Deleted subnets")
 	}
-	err = r.subnetsReconciler.ReconcileDelete(ctx, subnetsDeleteRequest)
-	if err != nil {
-		return ctrl.Result{}, microerror.Mask(err)
-	}
-	conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "Subnets have been deleted")
 
 	//
 	// Delete VPC
 	//
-	vpcDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
-		Resource:    awsCluster,
-		ClusterName: awsCluster.Name,
-		CloudResourceRequest: aws.CloudResourceRequest[aws.DeletedCloudResourceSpec]{
-			RoleARN: roleArn,
-			Region:  awsCluster.Spec.Region,
-			Spec: aws.DeletedCloudResourceSpec{
-				Id: awsCluster.Spec.NetworkSpec.VPC.ID,
+	vpcDeleted := capiconditions.IsFalse(awsCluster, capa.VpcReadyCondition) &&
+		capiconditions.GetReason(awsCluster, capa.VpcReadyCondition) == capi.DeletedReason
+	if vpcDeleted {
+		logger.Info("VPC already deleted")
+	} else {
+		vpcId := awsCluster.Spec.NetworkSpec.VPC.ID
+		logger.Info("Deleting VPC", "vpc-id", vpcId)
+		vpcDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
+			Resource:    awsCluster,
+			ClusterName: awsCluster.Name,
+			CloudResourceRequest: aws.CloudResourceRequest[aws.DeletedCloudResourceSpec]{
+				RoleARN: roleArn,
+				Region:  awsCluster.Spec.Region,
+				Spec: aws.DeletedCloudResourceSpec{
+					Id: awsCluster.Spec.NetworkSpec.VPC.ID,
+				},
 			},
-		},
+		}
+		err = r.vpcReconciler.ReconcileDelete(ctx, vpcDeleteRequest)
+		if err != nil {
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC has been deleted")
+		// unset VPC ID as we have deleted the AWS VPC, so the ID is not valid anymore
+		awsCluster.Spec.NetworkSpec.VPC.ID = ""
+		logger.Info("Deleted VPC", "vpc-id", vpcId)
 	}
-	err = r.vpcReconciler.ReconcileDelete(ctx, vpcDeleteRequest)
-	if err != nil {
-		return ctrl.Result{}, microerror.Mask(err)
-	}
-	conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC has been deleted")
 
 	// Cluster is deleted so remove the finalizer.
 	controllerutil.RemoveFinalizer(awsCluster, AwsVpcOperatorFinalizer)

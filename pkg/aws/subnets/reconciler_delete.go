@@ -10,7 +10,7 @@ import (
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
-func (r *reconciler) ReconcileDelete(ctx context.Context, request aws.ReconcileDeleteAllRequest) (err error) {
+func (r *reconciler) ReconcileDelete(ctx context.Context, request aws.ReconcileRequest[[]aws.DeletedCloudResourceSpec]) (err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Started reconciling subnets deletion")
 	defer func() {
@@ -30,7 +30,7 @@ func (r *reconciler) ReconcileDelete(ctx context.Context, request aws.ReconcileD
 	if request.Region == "" {
 		return microerror.Maskf(errors.InvalidConfigError, "Region must not be empty")
 	}
-	if len(request.Specs) == 0 {
+	if len(request.Spec) == 0 {
 		return microerror.Maskf(errors.InvalidConfigError, "Specs must not be empty")
 	}
 
@@ -38,7 +38,7 @@ func (r *reconciler) ReconcileDelete(ctx context.Context, request aws.ReconcileD
 		RoleARN: request.RoleARN,
 		Region:  request.Region,
 	}
-	for _, spec := range request.Specs {
+	for _, spec := range request.Spec {
 		deleteSubnetsInput.SubnetIds = append(deleteSubnetsInput.SubnetIds, spec.Id)
 	}
 	err = r.client.Delete(ctx, deleteSubnetsInput)

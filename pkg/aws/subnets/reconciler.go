@@ -15,7 +15,7 @@ import (
 
 type Reconciler interface {
 	Reconcile(ctx context.Context, request ReconcileRequest) (ReconcileResult, error)
-	ReconcileDelete(ctx context.Context, request aws.ReconcileDeleteAllRequest) error
+	ReconcileDelete(ctx context.Context, request aws.ReconcileRequest[[]aws.DeletedCloudResourceSpec]) error
 }
 
 func NewReconciler(client Client) (Reconciler, error) {

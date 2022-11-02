@@ -328,7 +328,6 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, awsCluster *
 		return ctrl.Result{}, microerror.Mask(err)
 	}
 	conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC has been deleted")
-	// TODO ..............
 
 	// Cluster is deleted so remove the finalizer.
 	controllerutil.RemoveFinalizer(awsCluster, AwsVpcOperatorFinalizer)

@@ -28,12 +28,13 @@ type GetSubnetsInput struct {
 type GetSubnetsOutput []GetSubnetOutput
 
 type GetSubnetOutput struct {
-	SubnetId         string
-	VpcId            string
-	CidrBlock        string
-	AvailabilityZone string
-	State            SubnetState
-	Tags             map[string]string
+	SubnetId              string
+	VpcId                 string
+	CidrBlock             string
+	AvailabilityZone      string
+	State                 SubnetState
+	RouteTableAssociation RouteTableAssociation
+	Tags                  map[string]string
 }
 
 func (c *client) Get(ctx context.Context, input GetSubnetsInput) (output GetSubnetsOutput, err error) {
@@ -57,45 +58,112 @@ func (c *client) Get(ctx context.Context, input GetSubnetsInput) (output GetSubn
 		return GetSubnetsOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
 
-	ec2Input := ec2.DescribeSubnetsInput{
-		Filters: []ec2Types.Filter{
-			{
-				Name:   aws.String(filterNameState),
-				Values: []string{string(ec2Types.SubnetStatePending), string(ec2Types.SubnetStateAvailable)},
-			},
-			{
-				Name:   aws.String(filterNameVpcID),
-				Values: []string{input.VpcId},
-			},
-		},
-	}
+	output = GetSubnetsOutput{}
+	subnetsMap := map[string]*GetSubnetOutput{}
 
-	ec2Output, err := c.ec2Client.DescribeSubnets(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
-	if err != nil {
-		return GetSubnetsOutput{}, microerror.Mask(err)
-	}
-
-	output = make(GetSubnetsOutput, len(ec2Output.Subnets))
-	for _, ec2Subnet := range ec2Output.Subnets {
-		var subnetState SubnetState
-		switch ec2Subnet.State {
-		case ec2Types.SubnetStatePending:
-			subnetState = SubnetStatePending
-		case ec2Types.SubnetStateAvailable:
-			subnetState = SubnetStateAvailable
-		default:
-			subnetState = SubnetStateUnknown
+	//
+	// Get subnet details for all subnets in the VPC
+	//
+	{
+		ec2Input := ec2.DescribeSubnetsInput{
+			Filters: []ec2Types.Filter{
+				{
+					Name:   aws.String(filterNameState),
+					Values: []string{string(ec2Types.SubnetStatePending), string(ec2Types.SubnetStateAvailable)},
+				},
+				{
+					Name:   aws.String(filterNameVpcID),
+					Values: []string{input.VpcId},
+				},
+			},
 		}
 
-		output = append(output, GetSubnetOutput{
-			SubnetId:         *ec2Subnet.SubnetId,
-			VpcId:            *ec2Subnet.VpcId,
-			CidrBlock:        *ec2Subnet.CidrBlock,
-			AvailabilityZone: *ec2Subnet.AvailabilityZone,
-			State:            subnetState,
-			Tags:             TagsToMap(ec2Subnet.Tags),
-		})
+		ec2Output, err := c.ec2Client.DescribeSubnets(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
+		if err != nil {
+			return GetSubnetsOutput{}, microerror.Mask(err)
+		}
+
+		for _, ec2Subnet := range ec2Output.Subnets {
+			var subnetState SubnetState
+			switch ec2Subnet.State {
+			case ec2Types.SubnetStatePending:
+				subnetState = SubnetStatePending
+			case ec2Types.SubnetStateAvailable:
+				subnetState = SubnetStateAvailable
+			default:
+				subnetState = SubnetStateUnknown
+			}
+
+			output = append(output, GetSubnetOutput{
+				SubnetId:         *ec2Subnet.SubnetId,
+				VpcId:            *ec2Subnet.VpcId,
+				CidrBlock:        *ec2Subnet.CidrBlock,
+				AvailabilityZone: *ec2Subnet.AvailabilityZone,
+				State:            subnetState,
+				Tags:             TagsToMap(ec2Subnet.Tags),
+			})
+
+			newlyAddedSubnet := &output[len(output)-1]
+			subnetsMap[newlyAddedSubnet.SubnetId] = newlyAddedSubnet
+		}
 	}
+
+	//
+	// Get route table associations for all subnets
+	//
+	{
+		ec2Input := ec2.DescribeRouteTablesInput{
+			Filters: []ec2Types.Filter{
+				{
+					Name:   aws.String(filterNameVpcID),
+					Values: []string{input.VpcId},
+				},
+			},
+		}
+		ec2Output, err := c.ec2Client.DescribeRouteTables(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
+		if err != nil {
+			return GetSubnetsOutput{}, microerror.Mask(err)
+		}
+
+		// Now match route tables to subnets
+		for _, ec2RouteTable := range ec2Output.RouteTables {
+			if ec2RouteTable.RouteTableId == nil {
+				continue
+			}
+
+			for _, ec2RouteTableAssociation := range ec2RouteTable.Associations {
+				if ec2RouteTableAssociation.SubnetId == nil {
+					continue
+				}
+				if subnetOutput, ok := subnetsMap[*ec2RouteTableAssociation.SubnetId]; ok {
+					// We found a route table association for a VPC subnet
+					subnetOutput.RouteTableAssociation.RouteTableId = *ec2RouteTable.RouteTableId
+
+					if ec2RouteTableAssociation.AssociationState != nil {
+						subnetOutput.RouteTableAssociation.AssociationStateCode = AssociationStateCode(ec2RouteTableAssociation.AssociationState.State)
+					} else {
+						subnetOutput.RouteTableAssociation.AssociationStateCode = AssociationStateCodeUnknown
+					}
+
+					logger.Info("Found route table for subnet",
+						"subnet-id", subnetOutput.SubnetId,
+						"route-table-id", subnetOutput.RouteTableAssociation.RouteTableId,
+						"association-state", subnetOutput.RouteTableAssociation.AssociationStateCode)
+
+					// We create one route table per subnet, so every route
+					// table will be associated to a single subnet, meaning
+					// that we could break out the loop here, as we found a
+					// subnet for this route table.
+					// By checking all associations for the route table, we
+					// enable a possible future scenario where one route
+					// table is associated to multiple subnets.
+				}
+			}
+		}
+	}
+
+	// Output now contains all subnet details, as well as associated route
+	// table for every subnet (if route table was created and associated).
 
 	logger.Info(fmt.Sprintf("Got %d subnets for VPC", len(output)), "vpc-id", input.VpcId)
 	return output, nil

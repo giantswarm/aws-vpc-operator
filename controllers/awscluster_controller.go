@@ -25,6 +25,8 @@ import (
 	"github.com/giantswarm/k8smetadata/pkg/annotation"
 	"github.com/giantswarm/microerror"
 	"github.com/go-logr/logr"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
@@ -262,6 +264,9 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 
 	// Update AWSCluster subnets
 	allSubnetsAvailable := true
+	allRouteTablesReady := true
+	allRouteTablesNotReadyMessage := ""
+	allRouteTablesNotReadyReason := ""
 	for _, existingSubnet := range subnetsReconcileResult.Subnets {
 		for i := range awsCluster.Spec.NetworkSpec.Subnets {
 			desiredSubnetSpec := &awsCluster.Spec.NetworkSpec.Subnets[i]
@@ -271,6 +276,20 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 				desiredSubnetSpec.AvailabilityZone = existingSubnet.AvailabilityZone
 				desiredSubnetSpec.Tags = existingSubnet.Tags
 
+				// Update subnet route table ID in the subnet spec
+				if existingSubnet.RouteTableAssociation.RouteTableId != "" {
+					routeTableId := existingSubnet.RouteTableAssociation.RouteTableId
+					desiredSubnetSpec.RouteTableID = &routeTableId
+					if existingSubnet.RouteTableAssociation.AssociationStateCode != subnets.AssociationStateCodeAssociated {
+						allRouteTablesReady = false
+						allRouteTablesNotReadyMessage = fmt.Sprintf("Route table %s for subnet %s not ready", routeTableId, existingSubnet.SubnetId)
+						// e.g. RouteTableAssociationStateAssociating
+						allRouteTablesNotReadyReason = "RouteTableAssociationState" + cases.Title(language.English).String(string(existingSubnet.RouteTableAssociation.AssociationStateCode))
+					}
+				} else {
+					allRouteTablesReady = false
+				}
+
 				if existingSubnet.State != subnets.SubnetStateAvailable {
 					allSubnetsAvailable = false
 				}
@@ -278,12 +297,22 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 			}
 		}
 	}
-	if allSubnetsAvailable {
+	if allSubnetsAvailable && allRouteTablesReady {
 		conditions.MarkTrue(awsCluster, capa.SubnetsReadyCondition)
 	} else {
-		conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, "SubnetNotAvailable", capi.ConditionSeverityWarning, "One or more subnets is still not available")
+		if !allSubnetsAvailable {
+			// subnets are not available
+			conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, "SubnetNotAvailable", capi.ConditionSeverityWarning, "One or more subnets is still not available")
+		} else {
+			// route tables are not ready
+			conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityWarning, allRouteTablesNotReadyMessage)
+		}
+
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
+
+	// Reconcile route tables
+	// TODO implement
 
 	cluster := &capi.Cluster{}
 	clusterKey := types.NamespacedName{

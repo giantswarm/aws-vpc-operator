@@ -30,6 +30,17 @@ func BuildParamsToTagSpecification(ec2ResourceType ec2Types.ResourceType, tags m
 	return tagSpec
 }
 
+// ToMap converts EC2 tags to map[string]string.
+func ToMap(src []ec2Types.Tag) map[string]string {
+	tags := make(map[string]string, len(src))
+
+	for _, t := range src {
+		tags[*t.Key] = *t.Value
+	}
+
+	return tags
+}
+
 //// CreateTagSpecification converts map[string]string to EC2 tags.
 //// Deprecated: use BuildParamsToTagSpecification
 //func CreateTagSpecification(resourceName string, resourceType ec2Types.ResourceType, src map[string]string) ec2Types.TagSpecification {

@@ -14,11 +14,16 @@ type ReconcileRequest[TResourceSpec any] struct {
 }
 
 type CloudResourceRequest[TResourceSpec any] struct {
-	RoleARN string
-	Region  string
-	Spec    TResourceSpec
+	RoleARN        string
+	Region         string
+	Spec           TResourceSpec
+	AdditionalTags map[string]string
 }
 
 type DeletedCloudResourceSpec struct {
 	Id string
+}
+
+type ReconcileResult[TResourceStatus any] struct {
+	Status TResourceStatus
 }

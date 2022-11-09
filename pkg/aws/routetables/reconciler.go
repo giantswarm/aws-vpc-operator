@@ -11,7 +11,7 @@ import (
 
 type Reconciler interface {
 	Reconcile(ctx context.Context, request aws.ReconcileRequest[Spec]) (aws.ReconcileResult[[]Status], error)
-	ReconcileDelete(ctx context.Context, request aws.ReconcileRequest[[]aws.DeletedCloudResourceSpec]) error
+	ReconcileDelete(ctx context.Context, request aws.ReconcileRequest[aws.DeletedCloudResourceSpec]) error
 }
 
 type Spec struct {

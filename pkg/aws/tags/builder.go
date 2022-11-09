@@ -1,5 +1,9 @@
 package tags
 
+import (
+	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
+)
+
 const (
 	NameAWSProviderPrefix = "github.com/giantswarm/aws-vpc-operator/"
 	NameAWSRole           = NameAWSProviderPrefix + "role"
@@ -36,6 +40,8 @@ func (p BuildParams) Build() map[string]string {
 
 	if p.Role != "" {
 		tags[NameAWSRole] = p.Role
+	} else {
+		tags[NameAWSRole] = capa.CommonRoleTagValue
 	}
 
 	if p.Name != "" {

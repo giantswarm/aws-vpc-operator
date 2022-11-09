@@ -42,6 +42,7 @@ import (
 
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/assumerole"
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/routetables"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/subnets"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/vpc"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
@@ -56,8 +57,9 @@ type AWSClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	vpcReconciler     vpc.Reconciler
-	subnetsReconciler subnets.Reconciler
+	vpcReconciler         vpc.Reconciler
+	subnetsReconciler     subnets.Reconciler
+	routeTablesReconciler routetables.Reconciler
 }
 
 // NewAWSClusterReconciler creates a new AWSClusterReconciler for specified client and scheme.
@@ -103,12 +105,26 @@ func NewAWSClusterReconciler(
 		}
 	}
 
+	var routeTablesReconciler routetables.Reconciler
+	{
+		routeTablesClient, err := routetables.NewClient(ec2Client, assumeRoleClient)
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+
+		routeTablesReconciler, err = routetables.NewReconciler(routeTablesClient)
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+	}
+
 	return &AWSClusterReconciler{
 		Client: client,
 		Scheme: scheme,
 
-		vpcReconciler:     vpcReconciler,
-		subnetsReconciler: subnetsReconciler,
+		vpcReconciler:         vpcReconciler,
+		subnetsReconciler:     subnetsReconciler,
+		routeTablesReconciler: routeTablesReconciler,
 	}, nil
 }
 
@@ -348,6 +364,38 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 }
 
 func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, err error) {
+	//
+	// Delete route tables
+	//
+	routeTablesDeleted := capiconditions.IsFalse(awsCluster, capa.RouteTablesReadyCondition) &&
+		capiconditions.GetReason(awsCluster, capa.RouteTablesReadyCondition) == capi.DeletedReason
+	if routeTablesDeleted {
+		logger.Info("Route tables are already deleted")
+	} else {
+		logger.Info("Deleting route tables")
+		routeTablesDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
+			Resource:    awsCluster,
+			ClusterName: awsCluster.Name,
+			CloudResourceRequest: aws.CloudResourceRequest[aws.DeletedCloudResourceSpec]{
+				RoleARN: roleArn,
+				Region:  awsCluster.Spec.Region,
+				Spec: aws.DeletedCloudResourceSpec{
+					Id: awsCluster.Spec.NetworkSpec.VPC.ID,
+				},
+			},
+		}
+		err = r.routeTablesReconciler.ReconcileDelete(ctx, routeTablesDeleteRequest)
+		if err != nil {
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+		// remove subnet IDs
+		for i := range awsCluster.Spec.NetworkSpec.Subnets {
+			awsCluster.Spec.NetworkSpec.Subnets[i].RouteTableID = nil
+		}
+		conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "Route tables have been deleted")
+		logger.Info("Deleted route tables")
+	}
+
 	//
 	// Delete subnets
 	//

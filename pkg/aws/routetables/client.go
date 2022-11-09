@@ -17,6 +17,7 @@ type Client interface {
 	Get(ctx context.Context, input GetRouteTableInput) (GetRouteTableOutput, error)
 	List(ctx context.Context, input ListRouteTablesInput) (ListRouteTablesOutput, error)
 	Delete(ctx context.Context, input DeleteRouteTableInput) error
+	DeleteAll(ctx context.Context, input DeleteRouteTablesInput) error
 }
 
 func NewClient(ec2Client *ec2.Client, assumeRoleClient assumerole.Client) (Client, error) {

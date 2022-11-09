@@ -328,7 +328,54 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 	}
 
 	// Reconcile route tables
-	// TODO implement
+	{
+		reconcileRequest := aws.ReconcileRequest[routetables.Spec]{
+			Resource:    awsCluster,
+			ClusterName: awsCluster.Name,
+			CloudResourceRequest: aws.CloudResourceRequest[routetables.Spec]{
+				RoleARN:        roleArn,
+				Region:         awsCluster.Spec.Region,
+				AdditionalTags: awsCluster.Spec.AdditionalTags,
+				Spec: routetables.Spec{
+					VpcId: awsCluster.Spec.NetworkSpec.VPC.ID,
+				},
+			},
+		}
+		for _, awsSubnetSpec := range awsCluster.Spec.NetworkSpec.Subnets {
+			reconcileRequest.Spec.Subnets = append(reconcileRequest.Spec.Subnets, routetables.Subnet{
+				Id:               awsSubnetSpec.ID,
+				AvailabilityZone: awsSubnetSpec.AvailabilityZone,
+			})
+		}
+
+		result, err := r.routeTablesReconciler.Reconcile(ctx, reconcileRequest)
+		if err != nil {
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+
+		allRouteTablesReady = true
+		allRouteTablesNotReadyMessage = ""
+		allRouteTablesNotReadyReason = ""
+		for _, routeTableStatus := range result.Status {
+			for _, association := range routeTableStatus.RouteTableAssociation {
+				if association.AssociationStateCode != routetables.AssociationStateCodeAssociated {
+					allRouteTablesReady = false
+					allRouteTablesNotReadyMessage = fmt.Sprintf("Route table %s for subnet %s not ready", routeTableStatus.RouteTableId, association.SubnetId)
+					// e.g. RouteTableAssociationStateAssociating
+					allRouteTablesNotReadyReason = "RouteTableAssociationState" + cases.Title(language.English).String(string(association.AssociationStateCode))
+					break
+				}
+			}
+		}
+
+		if allRouteTablesReady {
+			// subnets are not available
+			conditions.MarkTrue(awsCluster, capa.RouteTablesReadyCondition)
+		} else {
+			// route tables are not ready
+			conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityWarning, allRouteTablesNotReadyMessage)
+		}
+	}
 
 	cluster := &capi.Cluster{}
 	clusterKey := types.NamespacedName{

@@ -14,6 +14,7 @@ import (
 type Client interface {
 	Create(ctx context.Context, input CreateRouteTableInput) (CreateRouteTableOutput, error)
 	Update(ctx context.Context, input UpdateRouteTableInput) error
+	Get(ctx context.Context, input GetRouteTableInput) (GetRouteTableOutput, error)
 	List(ctx context.Context, input ListRouteTablesInput) (ListRouteTablesOutput, error)
 	Delete(ctx context.Context, input DeleteRouteTableInput) error
 }

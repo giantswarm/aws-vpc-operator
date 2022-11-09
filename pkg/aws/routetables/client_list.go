@@ -19,9 +19,9 @@ type ListRouteTablesInput struct {
 	VpcId   string
 }
 
-type ListRouteTablesOutput []GetRouteTableOutput
+type ListRouteTablesOutput []RouteTableOutput
 
-type GetRouteTableOutput struct {
+type RouteTableOutput struct {
 	RouteTableId      string
 	AssociatedSubnets []RouteTableAssociation
 	Tags              map[string]string
@@ -29,12 +29,12 @@ type GetRouteTableOutput struct {
 
 func (c *client) List(ctx context.Context, input ListRouteTablesInput) (output ListRouteTablesOutput, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Started creating route table")
+	logger.Info("Started listing route tables")
 	defer func() {
 		if err == nil {
-			logger.Info("Finished creating route table")
+			logger.Info("Finished listing route tables")
 		} else {
-			logger.Error(err, "Failed to create route table")
+			logger.Error(err, "Failed to list route tables")
 		}
 	}()
 
@@ -49,15 +49,24 @@ func (c *client) List(ctx context.Context, input ListRouteTablesInput) (output L
 	}
 
 	const vpcIdFilterName = "vpc-id"
+	output, err = c.listWithFilter(ctx, input.RoleARN, input.Region, vpcIdFilterName, input.VpcId)
+	if err != nil {
+		return ListRouteTablesOutput{}, microerror.Mask(err)
+	}
+
+	return output, nil
+}
+
+func (c *client) listWithFilter(ctx context.Context, roleArn, region, filterName, filterValue string) (output ListRouteTablesOutput, err error) {
 	ec2Input := ec2.DescribeRouteTablesInput{
 		Filters: []ec2Types.Filter{
 			{
-				Name:   aws.String(vpcIdFilterName),
-				Values: []string{input.VpcId},
+				Name:   aws.String(filterName),
+				Values: []string{filterValue},
 			},
 		},
 	}
-	ec2Output, err := c.ec2Client.DescribeRouteTables(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
+	ec2Output, err := c.ec2Client.DescribeRouteTables(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(roleArn, region))
 	if err != nil {
 		return ListRouteTablesOutput{}, microerror.Mask(err)
 	}
@@ -68,18 +77,20 @@ func (c *client) List(ctx context.Context, input ListRouteTablesInput) (output L
 			continue
 		}
 
-		routeTableOutput := GetRouteTableOutput{
+		routeTableOutput := RouteTableOutput{
 			RouteTableId: *ec2RouteTable.RouteTableId,
 			Tags:         tags.ToMap(ec2RouteTable.Tags),
 		}
 
 		for _, ec2RouteTableAssociation := range ec2RouteTable.Associations {
-			if ec2RouteTableAssociation.SubnetId == nil {
+			if ec2RouteTableAssociation.RouteTableAssociationId == nil ||
+				ec2RouteTableAssociation.SubnetId == nil {
 				continue
 			}
 
 			routeTableAssociation := RouteTableAssociation{
-				SubnetId: *ec2RouteTableAssociation.SubnetId,
+				AssociationId: *ec2RouteTableAssociation.RouteTableAssociationId,
+				SubnetId:      *ec2RouteTableAssociation.SubnetId,
 			}
 
 			if ec2RouteTableAssociation.AssociationState != nil {

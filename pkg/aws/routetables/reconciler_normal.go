@@ -106,7 +106,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 	//
 	for routeTableId, routeTable := range routeTablesWithoutSubnets {
 		createdByThisOperator := false
-		for tagName, _ := range routeTable.Tags {
+		for tagName := range routeTable.Tags {
 			if strings.HasPrefix(tagName, tags.NameAWSProviderPrefix) {
 				createdByThisOperator = true
 				break
@@ -164,7 +164,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 	// (see 1.b above)
 	//
 	for _, subnet := range request.Spec.Subnets {
-		routeTable, _ := subnetToRouteTable[subnet.Id]
+		routeTable := subnetToRouteTable[subnet.Id]
 		if routeTable == nil {
 			subnetsWithoutRouteTables = append(subnetsWithoutRouteTables, subnet)
 		}

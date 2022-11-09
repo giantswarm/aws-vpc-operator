@@ -62,12 +62,12 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 	//
 	// Get route tables for specified subnets
 	//
-	getRouteTablesInput := GetRouteTablesInput{
+	listRouteTablesInput := ListRouteTablesInput{
 		RoleARN: request.RoleARN,
 		Region:  request.Region,
 		VpcId:   request.Spec.VpcId,
 	}
-	existingRouteTables, err := r.client.Get(ctx, getRouteTablesInput)
+	existingRouteTables, err := r.client.List(ctx, listRouteTablesInput)
 	if err != nil {
 		return aws.ReconcileResult[[]Status]{}, microerror.Mask(err)
 	}

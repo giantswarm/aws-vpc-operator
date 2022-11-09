@@ -13,13 +13,13 @@ import (
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
-type GetRouteTablesInput struct {
+type ListRouteTablesInput struct {
 	RoleARN string
 	Region  string
 	VpcId   string
 }
 
-type GetRouteTablesOutput []GetRouteTableOutput
+type ListRouteTablesOutput []GetRouteTableOutput
 
 type GetRouteTableOutput struct {
 	RouteTableId      string
@@ -27,7 +27,7 @@ type GetRouteTableOutput struct {
 	Tags              map[string]string
 }
 
-func (c *client) Get(ctx context.Context, input GetRouteTablesInput) (output GetRouteTablesOutput, err error) {
+func (c *client) List(ctx context.Context, input ListRouteTablesInput) (output ListRouteTablesOutput, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Started creating route table")
 	defer func() {
@@ -39,13 +39,13 @@ func (c *client) Get(ctx context.Context, input GetRouteTablesInput) (output Get
 	}()
 
 	if input.RoleARN == "" {
-		return GetRouteTablesOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
+		return ListRouteTablesOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
 	}
 	if input.Region == "" {
-		return GetRouteTablesOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
+		return ListRouteTablesOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
 	}
 	if input.VpcId == "" {
-		return GetRouteTablesOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
+		return ListRouteTablesOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
 
 	const vpcIdFilterName = "vpc-id"
@@ -59,10 +59,10 @@ func (c *client) Get(ctx context.Context, input GetRouteTablesInput) (output Get
 	}
 	ec2Output, err := c.ec2Client.DescribeRouteTables(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
 	if err != nil {
-		return GetRouteTablesOutput{}, microerror.Mask(err)
+		return ListRouteTablesOutput{}, microerror.Mask(err)
 	}
 
-	output = make(GetRouteTablesOutput, len(ec2Output.RouteTables))
+	output = make(ListRouteTablesOutput, len(ec2Output.RouteTables))
 	for _, ec2RouteTable := range ec2Output.RouteTables {
 		if ec2RouteTable.RouteTableId == nil {
 			continue

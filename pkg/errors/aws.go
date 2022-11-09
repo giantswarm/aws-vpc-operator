@@ -48,3 +48,12 @@ var RouteTableIdNotSetError = &microerror.Error{
 func IsRouteTableIdNotSet(err error) bool {
 	return microerror.Cause(err) == RouteTableIdNotSetError
 }
+
+var RouteTableNotFoundError = &microerror.Error{
+	Kind: "RouteTableNotFoundError",
+}
+
+// IsRouteTableNotFound asserts RouteTableNotFoundError.
+func IsRouteTableNotFound(err error) bool {
+	return microerror.Cause(err) == RouteTableNotFoundError
+}

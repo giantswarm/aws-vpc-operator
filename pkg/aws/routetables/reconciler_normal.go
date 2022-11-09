@@ -46,7 +46,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 
 	// subnet -> route table map, i.e. subnets with already associated route
 	// tables
-	subnetToRouteTable := map[string]*GetRouteTableOutput{}
+	subnetToRouteTable := map[string]*RouteTableOutput{}
 	for _, subnet := range request.Spec.Subnets {
 		subnetToRouteTable[subnet.Id] = nil
 	}
@@ -57,7 +57,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 
 	// route tables not associated to any subnet - we delete these in case we
 	// created them
-	routeTablesWithoutSubnets := map[string]GetRouteTableOutput{}
+	routeTablesWithoutSubnets := map[string]RouteTableOutput{}
 
 	//
 	// Get route tables for specified subnets

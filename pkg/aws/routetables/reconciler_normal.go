@@ -45,7 +45,8 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 	//      we ignore them
 
 	// subnet -> route table map, i.e. subnets with already associated route
-	// tables
+	// tables, we initialize the map for all wanted subnets, so we can quickly
+	// look up if we need a route table for a specific subnet
 	subnetToRouteTable := map[string]*RouteTableOutput{}
 	for _, subnet := range request.Spec.Subnets {
 		subnetToRouteTable[subnet.Id] = nil
@@ -130,6 +131,11 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 	// now let's update outdated route tables (see 2.a above)
 	//
 	for subnetId, routeTable := range subnetToRouteTable {
+		if routeTable == nil {
+			// route table is still not set for this subnet (we create them
+			// later in this func)
+			continue
+		}
 		var zone string
 		for _, subnet := range request.Spec.Subnets {
 			if subnet.Id == subnetId {

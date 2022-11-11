@@ -130,21 +130,23 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 	// now let's update outdated route tables (see 2.a above)
 	//
 	for subnetId, routeTable := range subnetToRouteTable {
-		changedOrNewTags := tags.Diff(routeTable.Tags, request.AdditionalTags)
-		if len(changedOrNewTags) > 0 {
-			var zone string
-			for _, subnet := range request.Spec.Subnets {
-				if subnet.Id == subnetId {
-					zone = subnet.AvailabilityZone
-					break
-				}
+		var zone string
+		for _, subnet := range request.Spec.Subnets {
+			if subnet.Id == subnetId {
+				zone = subnet.AvailabilityZone
+				break
 			}
+		}
+		wantedTags := r.getRouteTableTags(request.ClusterName, routeTable.RouteTableId, zone, request.AdditionalTags)
+		currentTags := routeTable.Tags
+		changedOrNewTags := tags.Diff(wantedTags, currentTags)
 
+		if len(changedOrNewTags) > 0 {
 			input := UpdateRouteTableInput{
 				RoleARN:      request.RoleARN,
 				Region:       request.Region,
 				RouteTableId: routeTable.RouteTableId,
-				Tags:         r.getRouteTableTags(request.ClusterName, routeTable.RouteTableId, zone, request.AdditionalTags),
+				Tags:         wantedTags,
 			}
 			err = r.client.Update(ctx, input)
 			if err != nil {

@@ -322,7 +322,7 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 	subnetsReadyConditionLastChange := conditions.GetLastTransitionTime(awsCluster, capa.SubnetsReadyCondition)
 	subnetsReadyConditionTimeSinceLastChange := 0 * time.Minute
 	if subnetsReadyConditionLastChange != nil {
-		subnetsReadyConditionTimeSinceLastChange = time.Now().Sub(subnetsReadyConditionLastChange.Time)
+		subnetsReadyConditionTimeSinceLastChange = time.Since(subnetsReadyConditionLastChange.Time)
 	}
 
 	if !allSubnetsAvailable {
@@ -424,7 +424,7 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 			routeTablesReadyConditionLastChange := conditions.GetLastTransitionTime(awsCluster, capa.RouteTablesReadyCondition)
 			timeSinceLastChange := 0 * time.Minute
 			if routeTablesReadyConditionLastChange != nil {
-				timeSinceLastChange = time.Now().Sub(routeTablesReadyConditionLastChange.Time)
+				timeSinceLastChange = time.Since(routeTablesReadyConditionLastChange.Time)
 			}
 
 			// initially retry more often, but then back off, so we don't hammer the API server

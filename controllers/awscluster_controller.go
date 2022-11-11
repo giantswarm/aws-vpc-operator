@@ -169,6 +169,22 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return
 	}
 
+	// We need Spec.IdentityRef to be set, TODO check this
+	if awsCluster.Spec.IdentityRef == nil {
+		return ctrl.Result{}, microerror.Maskf(errors.IdentityNotSetError, "AWSCluster %s/%s does not have Spec.IdentityRef set", awsCluster.Namespace, awsCluster.Name)
+	}
+
+	identity := &capa.AWSClusterRoleIdentity{}
+	identityNamespacedName := types.NamespacedName{
+		Namespace: awsCluster.Namespace,
+		Name:      awsCluster.Spec.IdentityRef.Name,
+	}
+
+	err = r.Client.Get(ctx, identityNamespacedName, identity)
+	if err != nil {
+		return ctrl.Result{}, microerror.Mask(err)
+	}
+
 	//
 	// Create patch helper that will update reconciler AWSCLuster if there are any changes in the CR
 	//
@@ -192,22 +208,6 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			reterr = err
 		}
 	}()
-
-	// We need Spec.IdentityRef to be set, TODO check this
-	if awsCluster.Spec.IdentityRef == nil {
-		return ctrl.Result{}, microerror.Maskf(errors.IdentityNotSetError, "AWSCluster %s/%s does not have Spec.IdentityRef set", awsCluster.Namespace, awsCluster.Name)
-	}
-
-	identity := &capa.AWSClusterRoleIdentity{}
-	identityNamespacedName := types.NamespacedName{
-		Namespace: awsCluster.Namespace,
-		Name:      awsCluster.Spec.IdentityRef.Name,
-	}
-
-	err = r.Client.Get(ctx, identityNamespacedName, identity)
-	if err != nil {
-		return ctrl.Result{}, microerror.Mask(err)
-	}
 
 	if !awsCluster.DeletionTimestamp.IsZero() {
 		return r.reconcileDelete(ctx, log, awsCluster, identity.Spec.RoleArn)

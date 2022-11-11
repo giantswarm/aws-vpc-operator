@@ -304,6 +304,8 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 					}
 				} else {
 					allRouteTablesReady = false
+					allRouteTablesNotReadyReason = "RouteTableNotCreated"
+					allRouteTablesNotReadyMessage = fmt.Sprintf("Route table not created for subnet %s", existingSubnet.SubnetId)
 				}
 
 				if existingSubnet.State != subnets.SubnetStateAvailable {
@@ -313,18 +315,60 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 			}
 		}
 	}
-	if allSubnetsAvailable && allRouteTablesReady {
-		conditions.MarkTrue(awsCluster, capa.SubnetsReadyCondition)
-	} else {
-		if !allSubnetsAvailable {
-			// subnets are not available
-			conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, "SubnetNotAvailable", capi.ConditionSeverityWarning, "One or more subnets is still not available")
+
+	subnetsReadyConditionSeverity := conditions.GetSeverity(awsCluster, capa.SubnetsReadyCondition)
+	subnetsReadyConditionSeverityInfo := subnetsReadyConditionSeverity != nil && *subnetsReadyConditionSeverity == capi.ConditionSeverityInfo
+
+	subnetsReadyConditionLastChange := conditions.GetLastTransitionTime(awsCluster, capa.SubnetsReadyCondition)
+	subnetsReadyConditionTimeSinceLastChange := 0 * time.Minute
+	if subnetsReadyConditionLastChange != nil {
+		subnetsReadyConditionTimeSinceLastChange = time.Now().Sub(subnetsReadyConditionLastChange.Time)
+	}
+
+	if !allSubnetsAvailable {
+		// subnets are not available, so we wait for subnets to become available before proceeding
+		const subnetsNotAvailableReason = "SubnetsNotAvailable"
+		var newSeverity capi.ConditionSeverity
+		var newMessage string
+		var requeueTime time.Duration
+
+		// initially retry more often, but then back off, so we don't hammer the API server
+		if subnetsReadyConditionTimeSinceLastChange < 5*time.Minute && subnetsReadyConditionSeverityInfo {
+			// it's been less than 5 minutes, all good, just an info here,
+			// let's try again in a minute
+			newSeverity = capi.ConditionSeverityInfo
+			requeueTime = 1 * time.Minute
+			newMessage = "One or more subnets is still not available"
+		} else if subnetsReadyConditionTimeSinceLastChange < 15*time.Minute && subnetsReadyConditionSeverityInfo {
+			// it's been less than 15 minutes, all good, just an info here,
+			// let just wait a bit longer and try again in 5 minutes
+			newSeverity = capi.ConditionSeverityInfo
+			requeueTime = 5 * time.Minute
+			newMessage = "One or more subnets is still not available"
 		} else {
-			// route tables are not ready
-			conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityWarning, allRouteTablesNotReadyMessage)
+			// it's been more than 15 minutes, it's taking a while, so now
+			// it's a warning, and let's try again in 15 minutes
+			newSeverity = capi.ConditionSeverityWarning
+			requeueTime = 15 * time.Minute
+			newMessage = "One or more subnets is still not available for more than 15 minutes"
 		}
 
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+		conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, subnetsNotAvailableReason, newSeverity, newMessage)
+		return ctrl.Result{RequeueAfter: requeueTime}, nil
+	}
+
+	if allRouteTablesReady {
+		conditions.MarkTrue(awsCluster, capa.SubnetsReadyCondition)
+	} else {
+		// route tables are not ready (or not even created), we update condition
+		// and proceed with route tables reconciliation
+		if subnetsReadyConditionTimeSinceLastChange < 15*time.Minute && subnetsReadyConditionSeverityInfo {
+			// it's been less than 15 minutes, so all is still good
+			conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityInfo, allRouteTablesNotReadyMessage)
+		} else {
+			// it's been more than 15 minutes, route tables should have been associated until now
+			conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityWarning, allRouteTablesNotReadyMessage+" for more than 15 minutes")
+		}
 	}
 
 	// Reconcile route tables
@@ -369,11 +413,37 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 		}
 
 		if allRouteTablesReady {
-			// subnets are not available
+			// route tables are not ready
 			conditions.MarkTrue(awsCluster, capa.RouteTablesReadyCondition)
 		} else {
-			// route tables are not ready
-			conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityWarning, allRouteTablesNotReadyMessage)
+			// route tables are not ready, so we requeue, let's just check how
+			// much we should wait before retrying
+			routeTablesReadyConditionSeverity := conditions.GetSeverity(awsCluster, capa.RouteTablesReadyCondition)
+			routeTablesReadyConditionSeverityInfo := routeTablesReadyConditionSeverity != nil && *routeTablesReadyConditionSeverity == capi.ConditionSeverityInfo
+
+			routeTablesReadyConditionLastChange := conditions.GetLastTransitionTime(awsCluster, capa.RouteTablesReadyCondition)
+			timeSinceLastChange := 0 * time.Minute
+			if routeTablesReadyConditionLastChange != nil {
+				timeSinceLastChange = time.Now().Sub(routeTablesReadyConditionLastChange.Time)
+			}
+
+			// initially retry more often, but then back off, so we don't hammer the API server
+			if timeSinceLastChange < 5*time.Minute && routeTablesReadyConditionSeverityInfo {
+				// it's been less than 5 minutes, all good, just an info here,
+				// let's try again in a minute
+				conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityInfo, allRouteTablesNotReadyMessage)
+				return ctrl.Result{RequeueAfter: time.Minute}, nil
+			} else if timeSinceLastChange < 15*time.Minute && routeTablesReadyConditionSeverityInfo {
+				// it's been less than 15 minutes, all good, just an info here,
+				// let just wait a bit longer and try again in 5 minutes
+				conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityInfo, allRouteTablesNotReadyMessage)
+				return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+			} else {
+				// it's been more than 15 minutes, it's taking a while, so now
+				// it's a warning, and let's try again in 15 minutes
+				conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityWarning, allRouteTablesNotReadyMessage+" for more than 15 minutes")
+				return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
+			}
 		}
 	}
 

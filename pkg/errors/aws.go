@@ -57,3 +57,12 @@ var RouteTableNotFoundError = &microerror.Error{
 func IsRouteTableNotFound(err error) bool {
 	return microerror.Cause(err) == RouteTableNotFoundError
 }
+
+var UnknownVpcAttributeError = &microerror.Error{
+	Kind: "UnknownVpcAttribute",
+}
+
+// IsUnknownVpcAttribute asserts UnknownVpcAttributeError.
+func IsUnknownVpcAttribute(err error) bool {
+	return microerror.Cause(err) == UnknownVpcAttributeError
+}

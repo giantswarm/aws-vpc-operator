@@ -67,10 +67,12 @@ func (s *reconciler) Reconcile(ctx context.Context, spec Spec) (Status, error) {
 	// Create new VPC
 	//
 	createVpcInput := CreateVpcInput{
-		RoleARN:   spec.RoleARN,
-		Region:    spec.Region,
-		CidrBlock: spec.CidrBlock,
-		Tags:      s.getVpcTags(spec),
+		RoleARN:            spec.RoleARN,
+		Region:             spec.Region,
+		CidrBlock:          spec.CidrBlock,
+		Tags:               s.getVpcTags(spec),
+		EnableDnsHostnames: true,
+		EnableDnsSupport:   true,
 	}
 	createVpcOutput, err := s.client.Create(ctx, createVpcInput)
 	if err != nil {

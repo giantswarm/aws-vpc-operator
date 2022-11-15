@@ -75,6 +75,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 
 	// let's categorize the existing route tables
 	for _, existingRouteTable := range existingRouteTables {
+		logger.Info("Found existing route table", "route-table-id", existingRouteTable.RouteTableId)
 		isAssociatedToDesiredSubnet := false
 		isAssociatedToExternalSubnet := false
 		for _, associatedSubnet := range existingRouteTable.AssociatedSubnets {
@@ -83,10 +84,12 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 				routeTable := existingRouteTable
 				subnetToRouteTable[associatedSubnet.SubnetId] = &routeTable
 				isAssociatedToDesiredSubnet = true
+				logger.Info("Existing route table associated to wanted subnet", "route-table-id", existingRouteTable.RouteTableId, "subnet-id", associatedSubnet.SubnetId, "association-id", associatedSubnet)
 			} else {
 				// see 2.b above, this route table is associated to a subnet
 				// that is not in AWSCluster spec
 				isAssociatedToExternalSubnet = true
+				logger.Info("Existing route table associated to externally created subnet", "route-table-id", existingRouteTable.RouteTableId, "subnet-id", associatedSubnet.SubnetId, "association-id", associatedSubnet)
 			}
 		}
 
@@ -106,6 +109,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 	// created, see 2.c above)
 	//
 	for routeTableId, routeTable := range routeTablesWithoutSubnets {
+		logger.Info("Route table does not have an associated subnet", "route-table-id", routeTableId)
 		createdByThisOperator := false
 		for tagName := range routeTable.Tags {
 			if strings.HasPrefix(tagName, tags.NameAWSProviderPrefix) {
@@ -115,6 +119,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 		}
 
 		if createdByThisOperator {
+			logger.Info("Deleting route table without associated subnet", "route-table-id", routeTableId)
 			input := DeleteRouteTableInput{
 				RoleARN:      request.RoleARN,
 				Region:       request.Region,
@@ -136,6 +141,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 			// later in this func)
 			continue
 		}
+		logger.Info("Checking if existing route table has to be updated", "route-table-id", routeTable.RouteTableId)
 		var zone string
 		for _, subnet := range request.Spec.Subnets {
 			if subnet.Id == subnetId {
@@ -158,6 +164,9 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 			if err != nil {
 				return aws.ReconcileResult[[]Status]{}, microerror.Mask(err)
 			}
+			logger.Info("Existing route table has been updated", "route-table-id", routeTable.RouteTableId)
+		} else {
+			logger.Info("Existing route table is already up-to-date", "route-table-id", routeTable.RouteTableId)
 		}
 
 		routeTableStatus := Status{
@@ -178,6 +187,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 		}
 	}
 	for _, subnet := range subnetsWithoutRouteTables {
+		logger.Info("Creating route table for subnet", "subnet-id", subnet.Id)
 		input := CreateRouteTableInput{
 			RoleARN:  request.RoleARN,
 			Region:   request.Region,
@@ -200,6 +210,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 			},
 		}
 		result.Status = append(result.Status, routeTableStatus)
+		logger.Info("Created route table for subnet", "subnet-id", subnet.Id, "route-table-id", routeTableStatus.RouteTableId, "association-state", output.AssociationStateCode)
 	}
 
 	return result, nil

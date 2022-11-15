@@ -90,7 +90,7 @@ func (c *client) DeleteAll(ctx context.Context, input DeleteRouteTablesInput) (e
 		return microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
 	}
 	if input.VpcId == "" {
-		return microerror.Maskf(errors.InvalidConfigError, "%T.RouteTableId must not be empty", input)
+		return microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
 
 	listInput := ListRouteTablesInput(input)

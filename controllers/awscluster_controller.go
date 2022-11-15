@@ -45,11 +45,15 @@ import (
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/routetables"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/subnets"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/vpc"
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/vpcendpoint"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
 const (
 	AwsVpcOperatorFinalizer = "aws-vpc-operator.finalizers.giantswarm.io"
+
+	VpcEndpointReady              capi.ConditionType = "VpcEndpointReady"
+	ClusterSecurityGroupsNotReady                    = "ClusterSecurityGroupsNotReady"
 )
 
 // AWSClusterReconciler reconciles a AWSCluster object
@@ -60,6 +64,7 @@ type AWSClusterReconciler struct {
 	vpcReconciler         vpc.Reconciler
 	subnetsReconciler     subnets.Reconciler
 	routeTablesReconciler routetables.Reconciler
+	vpcEndpointReconciler vpcendpoint.Reconciler
 }
 
 // NewAWSClusterReconciler creates a new AWSClusterReconciler for specified client and scheme.
@@ -118,6 +123,19 @@ func NewAWSClusterReconciler(
 		}
 	}
 
+	var vpcEndpointReconciler vpcendpoint.Reconciler
+	{
+		vpcEndpointClient, err := vpcendpoint.NewClient(ec2Client, assumeRoleClient)
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+
+		vpcEndpointReconciler, err = vpcendpoint.NewReconciler(vpcEndpointClient)
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+	}
+
 	return &AWSClusterReconciler{
 		Client: client,
 		Scheme: scheme,
@@ -125,6 +143,7 @@ func NewAWSClusterReconciler(
 		vpcReconciler:         vpcReconciler,
 		subnetsReconciler:     subnetsReconciler,
 		routeTablesReconciler: routeTablesReconciler,
+		vpcEndpointReconciler: vpcEndpointReconciler,
 	}, nil
 }
 
@@ -371,7 +390,9 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 		}
 	}
 
+	//
 	// Reconcile route tables
+	//
 	{
 		reconcileRequest := aws.ReconcileRequest[routetables.Spec]{
 			Resource:    awsCluster,
@@ -444,6 +465,47 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 				conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityWarning, allRouteTablesNotReadyMessage+" for more than 15 minutes")
 				return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
 			}
+		}
+	}
+
+	//
+	// Reconcile VPC endpoints
+	//
+	if !capiconditions.IsTrue(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
+		// Security groups are still not ready, we wait for them first
+		capiconditions.MarkFalse(awsCluster, VpcEndpointReady, ClusterSecurityGroupsNotReady, capi.ConditionSeverityWarning, "Security groups are still not ready")
+		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+	} else {
+		reconcileRequest := aws.ReconcileRequest[vpcendpoint.Spec]{
+			Resource:    awsCluster,
+			ClusterName: awsCluster.Name,
+			CloudResourceRequest: aws.CloudResourceRequest[vpcendpoint.Spec]{
+				RoleARN: roleArn,
+				Region:  awsCluster.Spec.Region,
+				Spec: vpcendpoint.Spec{
+					VpcId: awsCluster.Spec.NetworkSpec.VPC.ID,
+				},
+				AdditionalTags: awsCluster.Spec.AdditionalTags,
+			},
+		}
+		for _, subnet := range awsCluster.Spec.NetworkSpec.Subnets {
+			reconcileRequest.Spec.SubnetIds = append(reconcileRequest.Spec.SubnetIds, subnet.ID)
+		}
+		for _, securityGroup := range awsCluster.Status.Network.SecurityGroups {
+			reconcileRequest.Spec.SecurityGroupIds = append(reconcileRequest.Spec.SecurityGroupIds, securityGroup.ID)
+		}
+		result, err := r.vpcEndpointReconciler.Reconcile(ctx, reconcileRequest)
+		if err != nil {
+			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, "ReconciliationError", capi.ConditionSeverityError, "An error occurred during reconciliation, check logs")
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+
+		if result.Status.VpcEndpointState == vpcendpoint.StateAvailable {
+			capiconditions.MarkTrue(awsCluster, VpcEndpointReady)
+		} else {
+			reason := fmt.Sprintf("VpcEndpointState%s", result.Status.VpcEndpointState)
+			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, reason, capi.ConditionSeverityWarning, "VPC endpoint is not available")
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 		}
 	}
 

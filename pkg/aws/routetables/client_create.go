@@ -31,7 +31,7 @@ func (c *client) Create(ctx context.Context, input CreateRouteTableInput) (outpu
 	logger.Info("Started creating route table")
 	defer func() {
 		if err == nil {
-			logger.Info("Finished creating route table")
+			logger.Info("Finished creating route table", "route-table-id", output.RouteTableId, "route-table-state", output.AssociationStateCode)
 		} else {
 			logger.Error(err, "Failed to create route table")
 		}

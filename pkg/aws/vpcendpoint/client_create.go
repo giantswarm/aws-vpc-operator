@@ -32,7 +32,7 @@ func (c *client) Create(ctx context.Context, input CreateVpcEndpointInput) (outp
 	logger.Info("Started creating VPC endpoint")
 	defer func() {
 		if err == nil {
-			logger.Info("Finished creating VPC endpoint")
+			logger.Info("Finished creating VPC endpoint", "vpc-endpoint-id", output.VpcEndpointId, "vpc-endpoint-state", output.VpcEndpointState)
 		} else {
 			logger.Error(err, "Failed to create VPC endpoint")
 		}

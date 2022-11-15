@@ -58,6 +58,7 @@ func (c *client) List(ctx context.Context, input ListRouteTablesInput) (output L
 }
 
 func (c *client) listWithFilter(ctx context.Context, roleArn, region, filterName, filterValue string) (output ListRouteTablesOutput, err error) {
+	logger := log.FromContext(ctx)
 	ec2Input := ec2.DescribeRouteTablesInput{
 		Filters: []ec2Types.Filter{
 			{
@@ -71,7 +72,7 @@ func (c *client) listWithFilter(ctx context.Context, roleArn, region, filterName
 		return ListRouteTablesOutput{}, microerror.Mask(err)
 	}
 
-	output = make(ListRouteTablesOutput, len(ec2Output.RouteTables))
+	output = ListRouteTablesOutput{}
 	for _, ec2RouteTable := range ec2Output.RouteTables {
 		if ec2RouteTable.RouteTableId == nil || *ec2RouteTable.RouteTableId == "" {
 			continue
@@ -103,6 +104,7 @@ func (c *client) listWithFilter(ctx context.Context, roleArn, region, filterName
 		}
 
 		output = append(output, routeTableOutput)
+		logger.Info("Found route table", "route-table-id", routeTableOutput.RouteTableId, "route-table-tags", routeTableOutput.Tags)
 	}
 
 	return output, nil

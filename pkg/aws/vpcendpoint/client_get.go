@@ -28,7 +28,7 @@ func (c *client) Get(ctx context.Context, input GetVpcEndpointInput) (output Get
 	logger.Info("Started getting VPC endpoint")
 	defer func() {
 		if err == nil {
-			logger.Info("Finished getting VPC endpoint")
+			logger.Info("Finished getting VPC endpoint", "vpc-endpoint-id", output.VpcEndpointId, "vpc-endpoint-state", output.VpcEndpointState)
 		} else {
 			logger.Error(err, "Failed to get VPC endpoint")
 		}

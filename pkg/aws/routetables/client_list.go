@@ -32,7 +32,7 @@ func (c *client) List(ctx context.Context, input ListRouteTablesInput) (output L
 	logger.Info("Started listing route tables")
 	defer func() {
 		if err == nil {
-			logger.Info("Finished listing route tables")
+			logger.Info("Finished listing route tables", "count", len(output))
 		} else {
 			logger.Error(err, "Failed to list route tables")
 		}
@@ -73,7 +73,7 @@ func (c *client) listWithFilter(ctx context.Context, roleArn, region, filterName
 
 	output = make(ListRouteTablesOutput, len(ec2Output.RouteTables))
 	for _, ec2RouteTable := range ec2Output.RouteTables {
-		if ec2RouteTable.RouteTableId == nil {
+		if ec2RouteTable.RouteTableId == nil || *ec2RouteTable.RouteTableId == "" {
 			continue
 		}
 

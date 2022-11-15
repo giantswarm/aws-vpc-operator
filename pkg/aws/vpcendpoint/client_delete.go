@@ -18,7 +18,7 @@ type DeleteVpcEndpointInput struct {
 
 func (c *client) Delete(ctx context.Context, input DeleteVpcEndpointInput) (err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Started deleting VPC endpoint")
+	logger.Info("Started deleting VPC endpoint", "vpc-id", input.VpcId)
 	defer func() {
 		if err == nil {
 			logger.Info("Finished deleting VPC endpoint")
@@ -44,12 +44,17 @@ func (c *client) Delete(ctx context.Context, input DeleteVpcEndpointInput) (err 
 	}
 
 	if vpcEndpoint.VpcEndpointState == StateDeleted {
-		return microerror.Maskf(errors.ResourceAlreadyDeletedError, "VPC endpoint is already deleted")
+		message := "VPC endpoint is already deleted"
+		logger.Info(message, "vpc-endpoint-id", vpcEndpoint.VpcEndpointId)
+		return microerror.Maskf(errors.ResourceAlreadyDeletedError, message)
 	}
 	if vpcEndpoint.VpcEndpointState == StateDeleting {
-		return microerror.Maskf(errors.ResourceDeletionInProgressError, "VPC endpoint deletion is already in progress")
+		message := "VPC endpoint deletion is already in progress"
+		logger.Info(message, "vpc-endpoint-id", vpcEndpoint.VpcEndpointId)
+		return microerror.Maskf(errors.ResourceDeletionInProgressError, message)
 	}
 
+	logger.Info("Found VPC endpoint to delete", "vpc-endpoint-id", vpcEndpoint.VpcEndpointId)
 	ec2Input := ec2.DeleteVpcEndpointsInput{
 		VpcEndpointIds: []string{vpcEndpoint.VpcEndpointId},
 	}

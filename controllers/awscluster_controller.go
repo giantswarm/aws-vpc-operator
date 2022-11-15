@@ -53,7 +53,7 @@ const (
 	AwsVpcOperatorFinalizer = "aws-vpc-operator.finalizers.giantswarm.io"
 
 	VpcEndpointReady              capi.ConditionType = "VpcEndpointReady"
-	ClusterSecurityGroupsNotReady                    = "ClusterSecurityGroupsNotReady"
+	ClusterSecurityGroupsNotReady string             = "ClusterSecurityGroupsNotReady"
 )
 
 // AWSClusterReconciler reconciles a AWSCluster object

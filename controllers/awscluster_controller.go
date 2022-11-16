@@ -468,6 +468,36 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 		}
 	}
 
+	cluster := &capi.Cluster{}
+	clusterKey := types.NamespacedName{
+		Namespace: awsCluster.Namespace,
+		Name:      awsCluster.Name,
+	}
+	err = r.Client.Get(ctx, clusterKey, cluster)
+	if err != nil {
+		return ctrl.Result{}, microerror.Mask(err)
+	}
+
+	//
+	// We have successfully created private VPC and subnets, now we can unpause
+	// the cluster, so that CAPA can take over the reconciliation.
+	//
+	// Unpause Cluster CR
+	if capiannotations.IsPaused(cluster, cluster) {
+		cluster.Spec.Paused = false
+		delete(cluster.Annotations, capi.PausedAnnotation)
+		err = r.Client.Update(ctx, cluster)
+		if err != nil {
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+	}
+	// Unpause AWSCluster
+	if capiannotations.IsPaused(cluster, awsCluster) {
+		delete(awsCluster.Annotations, capi.PausedAnnotation)
+		// We don't update the CR here, as patch helper in Reconcile method
+		// will do that.
+	}
+
 	//
 	// Reconcile VPC endpoints
 	//
@@ -507,36 +537,6 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, reason, capi.ConditionSeverityWarning, "VPC endpoint is not available")
 			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 		}
-	}
-
-	cluster := &capi.Cluster{}
-	clusterKey := types.NamespacedName{
-		Namespace: awsCluster.Namespace,
-		Name:      awsCluster.Name,
-	}
-	err = r.Client.Get(ctx, clusterKey, cluster)
-	if err != nil {
-		return ctrl.Result{}, microerror.Mask(err)
-	}
-
-	//
-	// We have successfully created private VPC and subnets, now we can unpause
-	// the cluster, so that CAPA can take over the reconciliation.
-	//
-	// Unpause Cluster CR
-	if capiannotations.IsPaused(cluster, cluster) {
-		cluster.Spec.Paused = false
-		delete(cluster.Annotations, capi.PausedAnnotation)
-		err = r.Client.Update(ctx, cluster)
-		if err != nil {
-			return ctrl.Result{}, microerror.Mask(err)
-		}
-	}
-	// Unpause AWSCluster
-	if capiannotations.IsPaused(cluster, awsCluster) {
-		delete(awsCluster.Annotations, capi.PausedAnnotation)
-		// We don't update the CR here, as patch helper in Reconcile method
-		// will do that.
 	}
 
 	return ctrl.Result{}, nil

@@ -2,11 +2,15 @@ package vpcendpoint
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/giantswarm/microerror"
+	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
+	capaservices "sigs.k8s.io/cluster-api-provider-aws/pkg/cloud/services"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws"
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/tags"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
@@ -65,7 +69,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 			VpcId:            request.Spec.VpcId,
 			SubnetIds:        request.Spec.SubnetIds,
 			SecurityGroupIds: request.Spec.SecurityGroupIds,
-			Tags:             nil, // TODO set tags
+			Tags:             r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, "", request.Region, request.AdditionalTags),
 		}
 		createOutput, err := r.client.Create(ctx, createInput)
 		if err != nil {
@@ -81,4 +85,29 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 	// TODO update existing VPC endpoint (e.g. update tags)
 	result.Status = Status(getOutput)
 	return result, nil
+}
+
+func (r *reconciler) getVpcEndpointTags(clusterName, vpcId, vpcEndpointId, region string, additionalTags map[string]string) map[string]string {
+	id := vpcEndpointId
+	if id == "" {
+		id = capaservices.TemporaryResourceID
+	}
+	name := fmt.Sprintf("%s-vpc-endpoint-secretsmanager-%s", clusterName, region)
+
+	allTags := map[string]string{}
+	for k, v := range additionalTags {
+		allTags[k] = v
+	}
+	allTags["vpc-id"] = vpcId
+	allTags["region"] = region
+
+	params := tags.BuildParams{
+		ClusterName: clusterName,
+		ResourceID:  id,
+		Name:        name,
+		Role:        capa.PrivateRoleTagValue,
+		Additional:  allTags,
+	}
+
+	return params.Build()
 }

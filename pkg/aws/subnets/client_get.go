@@ -2,7 +2,6 @@ package subnets
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -59,7 +58,6 @@ func (c *client) Get(ctx context.Context, input GetSubnetsInput) (output GetSubn
 	}
 
 	output = GetSubnetsOutput{}
-	subnetsMap := map[string]*GetSubnetOutput{}
 
 	//
 	// Get subnet details for all subnets in the VPC
@@ -94,19 +92,21 @@ func (c *client) Get(ctx context.Context, input GetSubnetsInput) (output GetSubn
 				subnetState = SubnetStateUnknown
 			}
 
-			output = append(output, GetSubnetOutput{
+			subnetOutput := GetSubnetOutput{
 				SubnetId:         *ec2Subnet.SubnetId,
 				VpcId:            *ec2Subnet.VpcId,
 				CidrBlock:        *ec2Subnet.CidrBlock,
 				AvailabilityZone: *ec2Subnet.AvailabilityZone,
 				State:            subnetState,
 				Tags:             TagsToMap(ec2Subnet.Tags),
-			})
+			}
 
-			newlyAddedSubnet := &output[len(output)-1]
-			subnetsMap[newlyAddedSubnet.SubnetId] = newlyAddedSubnet
+			output = append(output, subnetOutput)
 		}
 	}
+
+	// subnet id -> route table association
+	routeTableAssociationsMap := map[string]RouteTableAssociation{}
 
 	//
 	// Get route table associations for all subnets
@@ -130,41 +130,42 @@ func (c *client) Get(ctx context.Context, input GetSubnetsInput) (output GetSubn
 			if ec2RouteTable.RouteTableId == nil {
 				continue
 			}
+			routeTableId := *ec2RouteTable.RouteTableId
 
 			for _, ec2RouteTableAssociation := range ec2RouteTable.Associations {
 				if ec2RouteTableAssociation.SubnetId == nil {
 					continue
 				}
-				if subnetOutput, ok := subnetsMap[*ec2RouteTableAssociation.SubnetId]; ok {
-					// We found a route table association for a VPC subnet
-					subnetOutput.RouteTableAssociation.RouteTableId = *ec2RouteTable.RouteTableId
-
-					if ec2RouteTableAssociation.AssociationState != nil {
-						subnetOutput.RouteTableAssociation.AssociationStateCode = AssociationStateCode(ec2RouteTableAssociation.AssociationState.State)
-					} else {
-						subnetOutput.RouteTableAssociation.AssociationStateCode = AssociationStateCodeUnknown
-					}
-
-					logger.Info("Found route table for subnet",
-						"subnet-id", subnetOutput.SubnetId,
-						"route-table-id", subnetOutput.RouteTableAssociation.RouteTableId,
-						"association-state", subnetOutput.RouteTableAssociation.AssociationStateCode)
-
-					// We create one route table per subnet, so every route
-					// table will be associated to a single subnet, meaning
-					// that we could break out the loop here, as we found a
-					// subnet for this route table.
-					// By checking all associations for the route table, we
-					// enable a possible future scenario where one route
-					// table is associated to multiple subnets.
+				subnetId := *ec2RouteTableAssociation.SubnetId
+				routeTableAssociationsMap[subnetId] = RouteTableAssociation{
+					RouteTableId:         routeTableId,
+					AssociationStateCode: getAssociationStateCode(ec2RouteTableAssociation.AssociationState),
 				}
+
+				logger.Info("Found route table for subnet",
+					"subnet-id", subnetId,
+					"route-table-id", routeTableId,
+					"association-state", routeTableAssociationsMap[subnetId].AssociationStateCode)
+
+				// We create one route table per subnet, so every route
+				// table will be associated to a single subnet, meaning
+				// that we could break out the loop here, as we found a
+				// subnet for this route table.
+				// By checking all associations for the route table, we
+				// enable a possible future scenario where one route
+				// table is associated to multiple subnets.
 			}
 		}
 	}
 
-	// Output now contains all subnet details, as well as associated route
-	// table for every subnet (if route table was created and associated).
+	for i := range output {
+		if routeTableAssociation, ok := routeTableAssociationsMap[output[i].SubnetId]; ok {
+			output[i].RouteTableAssociation = routeTableAssociation
+			logger.Info("Found subnet with associated route table", "subnet-id", output[i].SubnetId, "route-table-association", output[i].RouteTableAssociation)
+		} else {
+			logger.Info("Found subnet without associated route table", "subnet-id", output[i].SubnetId)
+		}
+	}
 
-	logger.Info(fmt.Sprintf("Got %d subnets for VPC", len(output)), "vpc-id", input.VpcId)
 	return output, nil
 }

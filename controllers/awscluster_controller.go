@@ -531,7 +531,7 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 			return ctrl.Result{}, microerror.Mask(err)
 		}
 
-		if strings.ToLower(result.Status.VpcEndpointState) == strings.ToLower(vpcendpoint.StateAvailable) {
+		if strings.EqualFold(result.Status.VpcEndpointState, vpcendpoint.StateAvailable) {
 			capiconditions.MarkTrue(awsCluster, VpcEndpointReady)
 		} else {
 			reason := fmt.Sprintf("VpcEndpointState%s", result.Status.VpcEndpointState)

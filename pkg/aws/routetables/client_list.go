@@ -75,6 +75,7 @@ func (c *client) listWithFilter(ctx context.Context, roleArn, region, filterName
 	output = ListRouteTablesOutput{}
 	for _, ec2RouteTable := range ec2Output.RouteTables {
 		if ec2RouteTable.RouteTableId == nil || *ec2RouteTable.RouteTableId == "" {
+			logger.Info("Skipping route table without ID set")
 			continue
 		}
 
@@ -84,8 +85,12 @@ func (c *client) listWithFilter(ctx context.Context, roleArn, region, filterName
 		}
 
 		for _, ec2RouteTableAssociation := range ec2RouteTable.Associations {
-			if ec2RouteTableAssociation.RouteTableAssociationId == nil ||
-				ec2RouteTableAssociation.SubnetId == nil {
+			if ec2RouteTableAssociation.RouteTableAssociationId == nil {
+				logger.Info("Skipping adding route table association to output when listing (association ID not set)")
+				continue
+			}
+			if ec2RouteTableAssociation.SubnetId == nil {
+				logger.Info("Skipping adding route table association to output when listing route tables (subnet ID not set)", "route-table-id", *ec2RouteTable.RouteTableId, "association-id", *ec2RouteTableAssociation.RouteTableAssociationId)
 				continue
 			}
 

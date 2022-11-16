@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -530,7 +531,7 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 			return ctrl.Result{}, microerror.Mask(err)
 		}
 
-		if result.Status.VpcEndpointState == vpcendpoint.StateAvailable {
+		if strings.ToLower(result.Status.VpcEndpointState) == strings.ToLower(vpcendpoint.StateAvailable) {
 			capiconditions.MarkTrue(awsCluster, VpcEndpointReady)
 		} else {
 			reason := fmt.Sprintf("VpcEndpointState%s", result.Status.VpcEndpointState)

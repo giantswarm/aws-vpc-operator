@@ -545,11 +545,10 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 
 func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, err error) {
 	//
-	// Delete VPC endpoint
+	// Delete VPC endpoint. We delete VPC endpoint first, regardless of what CAPA
+	// deleted (if anything) until now.
 	//
-	vpcEndpointDeleted := capiconditions.IsFalse(awsCluster, VpcEndpointReady) &&
-		capiconditions.GetReason(awsCluster, VpcEndpointReady) == capi.DeletedReason
-	if vpcEndpointDeleted {
+	if isDeleted(awsCluster, VpcEndpointReady) {
 		logger.Info("VPC endpoint is already deleted")
 	} else {
 		vpcId := awsCluster.Spec.NetworkSpec.VPC.ID
@@ -574,11 +573,35 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	}
 
 	//
+	// Wait for CAPA to delete load balancer before we delete VPC, subnets and route tables.
+	//
+	if capiconditions.IsTrue(awsCluster, capa.LoadBalancerReadyCondition) ||
+		isBeingDeleted(awsCluster, capa.LoadBalancerReadyCondition) {
+		// load balancer deletion did not start, or it is in progress
+		logger.Info("Waiting for CAPA to delete load balancer, trying deletion again in a minute")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	} else if deletionFailed(awsCluster, capa.LoadBalancerReadyCondition) {
+		logger.Info("CAPA failed to delete load balancer, trying deletion of route tables, subnets and VPC again in 15 minutes")
+		return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
+	}
+
+	//
+	// Wait for CAPA to delete security groups before we delete VPC, subnets and route tables.
+	//
+	if capiconditions.IsTrue(awsCluster, capa.ClusterSecurityGroupsReadyCondition) ||
+		isBeingDeleted(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
+		// security groups deletion did not start, or it is in progress
+		logger.Info("Waiting for CAPA to delete security groups, trying deletion again in a minute")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	} else if deletionFailed(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
+		logger.Info("CAPA failed to delete security groups, trying deletion of route tables, subnets and VPC again in 15 minutes")
+		return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
+	}
+
+	//
 	// Delete route tables
 	//
-	routeTablesDeleted := capiconditions.IsFalse(awsCluster, capa.RouteTablesReadyCondition) &&
-		capiconditions.GetReason(awsCluster, capa.RouteTablesReadyCondition) == capi.DeletedReason
-	if routeTablesDeleted {
+	if isDeleted(awsCluster, capa.RouteTablesReadyCondition) {
 		logger.Info("Route tables are already deleted")
 	} else {
 		logger.Info("Deleting route tables")
@@ -608,9 +631,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	//
 	// Delete subnets
 	//
-	subnetsDeleted := capiconditions.IsFalse(awsCluster, capa.SubnetsReadyCondition) &&
-		capiconditions.GetReason(awsCluster, capa.SubnetsReadyCondition) == capi.DeletedReason
-	if subnetsDeleted {
+	if isDeleted(awsCluster, capa.SubnetsReadyCondition) {
 		logger.Info("Subnets are already deleted")
 	} else {
 		logger.Info("Deleting subnets")
@@ -645,9 +666,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	//
 	// Delete VPC
 	//
-	vpcDeleted := capiconditions.IsFalse(awsCluster, capa.VpcReadyCondition) &&
-		capiconditions.GetReason(awsCluster, capa.VpcReadyCondition) == capi.DeletedReason
-	if vpcDeleted {
+	if isDeleted(awsCluster, capa.VpcReadyCondition) {
 		logger.Info("VPC already deleted")
 	} else {
 		vpcId := awsCluster.Spec.NetworkSpec.VPC.ID

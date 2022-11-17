@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -45,11 +46,15 @@ import (
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/routetables"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/subnets"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/vpc"
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/vpcendpoint"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
 const (
 	AwsVpcOperatorFinalizer = "aws-vpc-operator.finalizers.giantswarm.io"
+
+	VpcEndpointReady              capi.ConditionType = "VpcEndpointReady"
+	ClusterSecurityGroupsNotReady string             = "ClusterSecurityGroupsNotReady"
 )
 
 // AWSClusterReconciler reconciles a AWSCluster object
@@ -60,6 +65,7 @@ type AWSClusterReconciler struct {
 	vpcReconciler         vpc.Reconciler
 	subnetsReconciler     subnets.Reconciler
 	routeTablesReconciler routetables.Reconciler
+	vpcEndpointReconciler vpcendpoint.Reconciler
 }
 
 // NewAWSClusterReconciler creates a new AWSClusterReconciler for specified client and scheme.
@@ -118,6 +124,19 @@ func NewAWSClusterReconciler(
 		}
 	}
 
+	var vpcEndpointReconciler vpcendpoint.Reconciler
+	{
+		vpcEndpointClient, err := vpcendpoint.NewClient(ec2Client, assumeRoleClient)
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+
+		vpcEndpointReconciler, err = vpcendpoint.NewReconciler(vpcEndpointClient)
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+	}
+
 	return &AWSClusterReconciler{
 		Client: client,
 		Scheme: scheme,
@@ -125,6 +144,7 @@ func NewAWSClusterReconciler(
 		vpcReconciler:         vpcReconciler,
 		subnetsReconciler:     subnetsReconciler,
 		routeTablesReconciler: routeTablesReconciler,
+		vpcEndpointReconciler: vpcEndpointReconciler,
 	}, nil
 }
 
@@ -371,7 +391,9 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 		}
 	}
 
+	//
 	// Reconcile route tables
+	//
 	{
 		reconcileRequest := aws.ReconcileRequest[routetables.Spec]{
 			Resource:    awsCluster,
@@ -477,16 +499,109 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 		// will do that.
 	}
 
+	//
+	// Reconcile VPC endpoints
+	//
+	if !capiconditions.IsTrue(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
+		// Security groups are still not ready, we wait for them first
+		capiconditions.MarkFalse(awsCluster, VpcEndpointReady, ClusterSecurityGroupsNotReady, capi.ConditionSeverityWarning, "Security groups are still not ready")
+		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+	} else {
+		reconcileRequest := aws.ReconcileRequest[vpcendpoint.Spec]{
+			Resource:    awsCluster,
+			ClusterName: awsCluster.Name,
+			CloudResourceRequest: aws.CloudResourceRequest[vpcendpoint.Spec]{
+				RoleARN: roleArn,
+				Region:  awsCluster.Spec.Region,
+				Spec: vpcendpoint.Spec{
+					VpcId: awsCluster.Spec.NetworkSpec.VPC.ID,
+				},
+				AdditionalTags: awsCluster.Spec.AdditionalTags,
+			},
+		}
+		for _, subnet := range awsCluster.Spec.NetworkSpec.Subnets {
+			reconcileRequest.Spec.SubnetIds = append(reconcileRequest.Spec.SubnetIds, subnet.ID)
+		}
+		for _, securityGroup := range awsCluster.Status.Network.SecurityGroups {
+			reconcileRequest.Spec.SecurityGroupIds = append(reconcileRequest.Spec.SecurityGroupIds, securityGroup.ID)
+		}
+		result, err := r.vpcEndpointReconciler.Reconcile(ctx, reconcileRequest)
+		if err != nil {
+			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, "ReconciliationError", capi.ConditionSeverityError, "An error occurred during reconciliation, check logs")
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+
+		if strings.EqualFold(result.Status.VpcEndpointState, vpcendpoint.StateAvailable) {
+			capiconditions.MarkTrue(awsCluster, VpcEndpointReady)
+		} else {
+			reason := fmt.Sprintf("VpcEndpointState%s", result.Status.VpcEndpointState)
+			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, reason, capi.ConditionSeverityWarning, "VPC endpoint is not available")
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		}
+	}
+
 	return ctrl.Result{}, nil
 }
 
 func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, err error) {
 	//
+	// Delete VPC endpoint. We delete VPC endpoint first, regardless of what CAPA
+	// deleted (if anything) until now.
+	//
+	if isDeleted(awsCluster, VpcEndpointReady) {
+		logger.Info("VPC endpoint is already deleted")
+	} else {
+		vpcId := awsCluster.Spec.NetworkSpec.VPC.ID
+		logger.Info("Deleting VPC endpoint", "vpc-id", vpcId)
+		vpcEndpointDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
+			Resource:    awsCluster,
+			ClusterName: awsCluster.Name,
+			CloudResourceRequest: aws.CloudResourceRequest[aws.DeletedCloudResourceSpec]{
+				RoleARN: roleArn,
+				Region:  awsCluster.Spec.Region,
+				Spec: aws.DeletedCloudResourceSpec{
+					Id: awsCluster.Spec.NetworkSpec.VPC.ID,
+				},
+			},
+		}
+		err = r.vpcEndpointReconciler.ReconcileDelete(ctx, vpcEndpointDeleteRequest)
+		if err != nil {
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+		conditions.MarkFalse(awsCluster, VpcEndpointReady, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC endpoint has been deleted")
+		logger.Info("Deleted VPC endpoint", "vpc-id", vpcId)
+	}
+
+	//
+	// Wait for CAPA to delete load balancer before we delete VPC, subnets and route tables.
+	//
+	if capiconditions.IsTrue(awsCluster, capa.LoadBalancerReadyCondition) ||
+		isBeingDeleted(awsCluster, capa.LoadBalancerReadyCondition) {
+		// load balancer deletion did not start, or it is in progress
+		logger.Info("Waiting for CAPA to delete load balancer, trying deletion again in a minute")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	} else if deletionFailed(awsCluster, capa.LoadBalancerReadyCondition) {
+		logger.Info("CAPA failed to delete load balancer, trying deletion of route tables, subnets and VPC again in 15 minutes")
+		return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
+	}
+
+	//
+	// Wait for CAPA to delete security groups before we delete VPC, subnets and route tables.
+	//
+	if capiconditions.IsTrue(awsCluster, capa.ClusterSecurityGroupsReadyCondition) ||
+		isBeingDeleted(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
+		// security groups deletion did not start, or it is in progress
+		logger.Info("Waiting for CAPA to delete security groups, trying deletion again in a minute")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	} else if deletionFailed(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
+		logger.Info("CAPA failed to delete security groups, trying deletion of route tables, subnets and VPC again in 15 minutes")
+		return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
+	}
+
+	//
 	// Delete route tables
 	//
-	routeTablesDeleted := capiconditions.IsFalse(awsCluster, capa.RouteTablesReadyCondition) &&
-		capiconditions.GetReason(awsCluster, capa.RouteTablesReadyCondition) == capi.DeletedReason
-	if routeTablesDeleted {
+	if isDeleted(awsCluster, capa.RouteTablesReadyCondition) {
 		logger.Info("Route tables are already deleted")
 	} else {
 		logger.Info("Deleting route tables")
@@ -516,9 +631,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	//
 	// Delete subnets
 	//
-	subnetsDeleted := capiconditions.IsFalse(awsCluster, capa.SubnetsReadyCondition) &&
-		capiconditions.GetReason(awsCluster, capa.SubnetsReadyCondition) == capi.DeletedReason
-	if subnetsDeleted {
+	if isDeleted(awsCluster, capa.SubnetsReadyCondition) {
 		logger.Info("Subnets are already deleted")
 	} else {
 		logger.Info("Deleting subnets")
@@ -553,9 +666,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	//
 	// Delete VPC
 	//
-	vpcDeleted := capiconditions.IsFalse(awsCluster, capa.VpcReadyCondition) &&
-		capiconditions.GetReason(awsCluster, capa.VpcReadyCondition) == capi.DeletedReason
-	if vpcDeleted {
+	if isDeleted(awsCluster, capa.VpcReadyCondition) {
 		logger.Info("VPC already deleted")
 	} else {
 		vpcId := awsCluster.Spec.NetworkSpec.VPC.ID

@@ -90,7 +90,7 @@ func (c *client) DeleteAll(ctx context.Context, input DeleteRouteTablesInput) (e
 		return microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
 	}
 	if input.VpcId == "" {
-		return microerror.Maskf(errors.InvalidConfigError, "%T.RouteTableId must not be empty", input)
+		return microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
 
 	listInput := ListRouteTablesInput(input)
@@ -100,6 +100,10 @@ func (c *client) DeleteAll(ctx context.Context, input DeleteRouteTablesInput) (e
 	}
 
 	for _, routeTable := range listOutput {
+
+		if len(routeTable.AssociatedSubnets) > 0 {
+			logger.Info("Deleting subnet associations for route table", "route-table-id", routeTable.RouteTableId)
+		}
 		// first delete all existing route table associations
 		for _, association := range routeTable.AssociatedSubnets {
 			err = c.deleteRouteTableAssociation(ctx, input.RoleARN, input.Region, association.AssociationId)
@@ -107,12 +111,17 @@ func (c *client) DeleteAll(ctx context.Context, input DeleteRouteTablesInput) (e
 				return microerror.Mask(err)
 			}
 		}
+		if len(routeTable.AssociatedSubnets) > 0 {
+			logger.Info("Deleted subnet associations for route table", "route-table-id", routeTable.RouteTableId)
+		}
 
 		// then delete the route table itself
+		logger.Info("Deleting route table", "route-table-id", routeTable.RouteTableId)
 		err = c.deleteRouteTable(ctx, input.RoleARN, input.Region, routeTable.RouteTableId)
 		if err != nil {
 			return microerror.Mask(err)
 		}
+		logger.Info("Deleted route table", "route-table-id", routeTable.RouteTableId)
 	}
 
 	return nil

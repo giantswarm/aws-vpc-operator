@@ -32,7 +32,7 @@ func (c *client) List(ctx context.Context, input ListRouteTablesInput) (output L
 	logger.Info("Started listing route tables")
 	defer func() {
 		if err == nil {
-			logger.Info("Finished listing route tables")
+			logger.Info("Finished listing route tables", "count", len(output))
 		} else {
 			logger.Error(err, "Failed to list route tables")
 		}
@@ -58,6 +58,7 @@ func (c *client) List(ctx context.Context, input ListRouteTablesInput) (output L
 }
 
 func (c *client) listWithFilter(ctx context.Context, roleArn, region, filterName, filterValue string) (output ListRouteTablesOutput, err error) {
+	logger := log.FromContext(ctx)
 	ec2Input := ec2.DescribeRouteTablesInput{
 		Filters: []ec2Types.Filter{
 			{
@@ -71,9 +72,10 @@ func (c *client) listWithFilter(ctx context.Context, roleArn, region, filterName
 		return ListRouteTablesOutput{}, microerror.Mask(err)
 	}
 
-	output = make(ListRouteTablesOutput, len(ec2Output.RouteTables))
+	output = ListRouteTablesOutput{}
 	for _, ec2RouteTable := range ec2Output.RouteTables {
-		if ec2RouteTable.RouteTableId == nil {
+		if ec2RouteTable.RouteTableId == nil || *ec2RouteTable.RouteTableId == "" {
+			logger.Info("Skipping route table without ID set")
 			continue
 		}
 
@@ -83,8 +85,12 @@ func (c *client) listWithFilter(ctx context.Context, roleArn, region, filterName
 		}
 
 		for _, ec2RouteTableAssociation := range ec2RouteTable.Associations {
-			if ec2RouteTableAssociation.RouteTableAssociationId == nil ||
-				ec2RouteTableAssociation.SubnetId == nil {
+			if ec2RouteTableAssociation.RouteTableAssociationId == nil {
+				logger.Info("Skipping adding route table association to output when listing (association ID not set)")
+				continue
+			}
+			if ec2RouteTableAssociation.SubnetId == nil {
+				logger.Info("Skipping adding route table association to output when listing route tables (subnet ID not set)", "route-table-id", *ec2RouteTable.RouteTableId, "association-id", *ec2RouteTableAssociation.RouteTableAssociationId)
 				continue
 			}
 
@@ -103,6 +109,7 @@ func (c *client) listWithFilter(ctx context.Context, roleArn, region, filterName
 		}
 
 		output = append(output, routeTableOutput)
+		logger.Info("Found route table", "route-table-id", routeTableOutput.RouteTableId, "route-table-tags", routeTableOutput.Tags)
 	}
 
 	return output, nil

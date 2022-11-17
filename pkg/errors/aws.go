@@ -57,3 +57,39 @@ var RouteTableNotFoundError = &microerror.Error{
 func IsRouteTableNotFound(err error) bool {
 	return microerror.Cause(err) == RouteTableNotFoundError
 }
+
+var UnknownVpcAttributeError = &microerror.Error{
+	Kind: "UnknownVpcAttribute",
+}
+
+// IsUnknownVpcAttribute asserts UnknownVpcAttributeError.
+func IsUnknownVpcAttribute(err error) bool {
+	return microerror.Cause(err) == UnknownVpcAttributeError
+}
+
+var VpcEndpointNotFoundError = &microerror.Error{
+	Kind: "VpcEndpointNotFoundError",
+}
+
+// IsVpcEndpointNotFound asserts VpcEndpointNotFoundError.
+func IsVpcEndpointNotFound(err error) bool {
+	return microerror.Cause(err) == VpcEndpointNotFoundError
+}
+
+var ResourceDeletionInProgressError = &microerror.Error{
+	Kind: "ResourceDeletionInProgressError",
+}
+
+// IsResourceDeletionInProgress asserts ResourceDeletionInProgressError.
+func IsResourceDeletionInProgress(err error) bool {
+	return microerror.Cause(err) == ResourceDeletionInProgressError
+}
+
+var ResourceAlreadyDeletedError = &microerror.Error{
+	Kind: "ResourceAlreadyDeletedError",
+}
+
+// IsResourceAlreadyDeleted asserts ResourceAlreadyDeletedError.
+func IsResourceAlreadyDeleted(err error) bool {
+	return microerror.Cause(err) == ResourceAlreadyDeletedError
+}

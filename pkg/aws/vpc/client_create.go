@@ -13,10 +13,12 @@ import (
 )
 
 type CreateVpcInput struct {
-	RoleARN   string
-	Region    string
-	CidrBlock string
-	Tags      map[string]string
+	RoleARN            string
+	Region             string
+	CidrBlock          string
+	Tags               map[string]string
+	EnableDnsHostnames bool
+	EnableDnsSupport   bool
 }
 
 type CreateVpcOutput struct {
@@ -49,6 +51,15 @@ func (c *client) Create(ctx context.Context, input CreateVpcInput) (CreateVpcOut
 	}
 
 	ec2Output, err := c.ec2Client.CreateVpc(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
+	if err != nil {
+		return CreateVpcOutput{}, microerror.Mask(err)
+	}
+
+	wantedAttributes := attributes{
+		EnableDnsHostnames: input.EnableDnsHostnames,
+		EnableDnsSupport:   input.EnableDnsSupport,
+	}
+	err = c.ensureAttributes(ctx, input.RoleARN, input.Region, *ec2Output.Vpc.VpcId, wantedAttributes)
 	if err != nil {
 		return CreateVpcOutput{}, microerror.Mask(err)
 	}

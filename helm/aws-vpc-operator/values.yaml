@@ -1,0 +1,26 @@
+name: aws-vpc-operator
+serviceType: managed
+
+project:
+  branch: "[[ .Branch ]]"
+  commit: "[[ .SHA ]]"
+
+image:
+  registry: quay.io
+  name: giantswarm/aws-vpc-operator
+  tag: v0.1.0
+  pullPolicy: IfNotPresent
+
+pod:
+  user:
+    id: "65532"
+  group:
+    id: "65532"
+  credentials:
+    dir: /home/.aws
+    filename: credentials
+
+aws:
+  accessKeyID: accesskey
+  secretAccessKey: secretkey
+  region: region

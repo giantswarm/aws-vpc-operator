@@ -3,4 +3,10 @@ layout:
 - go.kubebuilder.io/v3
 projectName: aws-vpc-operator
 repo: github.com/giantswarm/aws-vpc-operator
+resources:
+- controller: true
+  domain: giantswarm.io
+  group: infrastructure.cluster.x-k8s.io
+  kind: AWSCluster
+  version: v1beta1
 version: "3"

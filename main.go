@@ -17,8 +17,13 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -30,6 +35,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	"github.com/giantswarm/aws-vpc-operator/controllers"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -60,6 +67,7 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	ctx := context.Background()
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -85,6 +93,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		setupLog.Error(err, "unable to create default AWS client config")
+		os.Exit(1)
+	}
+	ec2Client := ec2.NewFromConfig(cfg)
+	assumeRoleAPIClient := sts.NewFromConfig(cfg)
+
+	awsReconciler, err := controllers.NewAWSClusterReconciler(
+		mgr.GetClient(),
+		mgr.GetScheme(),
+		ec2Client,
+		assumeRoleAPIClient,
+	)
+	if err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AWSCluster")
+		os.Exit(1)
+	}
+
+	if err = awsReconciler.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to setup controller", "controller", "AWSCluster")
+		os.Exit(1)
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

@@ -39,3 +39,21 @@ var VpcStateNotSetError = &microerror.Error{
 func IsVpcStateNotSet(err error) bool {
 	return microerror.Cause(err) == VpcStateNotSetError
 }
+
+var RouteTableIdNotSetError = &microerror.Error{
+	Kind: "RouteTableIdNotSet",
+}
+
+// IsRouteTableIdNotSet asserts RouteTableIdNotSetError.
+func IsRouteTableIdNotSet(err error) bool {
+	return microerror.Cause(err) == RouteTableIdNotSetError
+}
+
+var RouteTableNotFoundError = &microerror.Error{
+	Kind: "RouteTableNotFoundError",
+}
+
+// IsRouteTableNotFound asserts RouteTableNotFoundError.
+func IsRouteTableNotFound(err error) bool {
+	return microerror.Cause(err) == RouteTableNotFoundError
+}

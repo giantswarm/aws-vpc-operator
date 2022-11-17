@@ -25,6 +25,8 @@ import (
 	"github.com/giantswarm/k8smetadata/pkg/annotation"
 	"github.com/giantswarm/microerror"
 	"github.com/go-logr/logr"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
@@ -40,6 +42,7 @@ import (
 
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/assumerole"
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/routetables"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/subnets"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/vpc"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
@@ -54,8 +57,9 @@ type AWSClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	vpcReconciler     vpc.Reconciler
-	subnetsReconciler subnets.Reconciler
+	vpcReconciler         vpc.Reconciler
+	subnetsReconciler     subnets.Reconciler
+	routeTablesReconciler routetables.Reconciler
 }
 
 // NewAWSClusterReconciler creates a new AWSClusterReconciler for specified client and scheme.
@@ -101,12 +105,26 @@ func NewAWSClusterReconciler(
 		}
 	}
 
+	var routeTablesReconciler routetables.Reconciler
+	{
+		routeTablesClient, err := routetables.NewClient(ec2Client, assumeRoleClient)
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+
+		routeTablesReconciler, err = routetables.NewReconciler(routeTablesClient)
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+	}
+
 	return &AWSClusterReconciler{
 		Client: client,
 		Scheme: scheme,
 
-		vpcReconciler:     vpcReconciler,
-		subnetsReconciler: subnetsReconciler,
+		vpcReconciler:         vpcReconciler,
+		subnetsReconciler:     subnetsReconciler,
+		routeTablesReconciler: routeTablesReconciler,
 	}, nil
 }
 
@@ -151,6 +169,22 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return
 	}
 
+	// We need Spec.IdentityRef to be set, TODO check this
+	if awsCluster.Spec.IdentityRef == nil {
+		return ctrl.Result{}, microerror.Maskf(errors.IdentityNotSetError, "AWSCluster %s/%s does not have Spec.IdentityRef set", awsCluster.Namespace, awsCluster.Name)
+	}
+
+	identity := &capa.AWSClusterRoleIdentity{}
+	identityNamespacedName := types.NamespacedName{
+		Namespace: awsCluster.Namespace,
+		Name:      awsCluster.Spec.IdentityRef.Name,
+	}
+
+	err = r.Client.Get(ctx, identityNamespacedName, identity)
+	if err != nil {
+		return ctrl.Result{}, microerror.Mask(err)
+	}
+
 	//
 	// Create patch helper that will update reconciler AWSCLuster if there are any changes in the CR
 	//
@@ -174,22 +208,6 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			reterr = err
 		}
 	}()
-
-	// We need Spec.IdentityRef to be set, TODO check this
-	if awsCluster.Spec.IdentityRef == nil {
-		return ctrl.Result{}, microerror.Maskf(errors.IdentityNotSetError, "AWSCluster %s/%s does not have Spec.IdentityRef set", awsCluster.Namespace, awsCluster.Name)
-	}
-
-	identity := &capa.AWSClusterRoleIdentity{}
-	identityNamespacedName := types.NamespacedName{
-		Namespace: awsCluster.Namespace,
-		Name:      awsCluster.Spec.IdentityRef.Name,
-	}
-
-	err = r.Client.Get(ctx, identityNamespacedName, identity)
-	if err != nil {
-		return ctrl.Result{}, microerror.Mask(err)
-	}
 
 	if !awsCluster.DeletionTimestamp.IsZero() {
 		return r.reconcileDelete(ctx, log, awsCluster, identity.Spec.RoleArn)
@@ -262,6 +280,9 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 
 	// Update AWSCluster subnets
 	allSubnetsAvailable := true
+	allRouteTablesReady := true
+	allRouteTablesNotReadyMessage := ""
+	allRouteTablesNotReadyReason := ""
 	for _, existingSubnet := range subnetsReconcileResult.Subnets {
 		for i := range awsCluster.Spec.NetworkSpec.Subnets {
 			desiredSubnetSpec := &awsCluster.Spec.NetworkSpec.Subnets[i]
@@ -271,6 +292,22 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 				desiredSubnetSpec.AvailabilityZone = existingSubnet.AvailabilityZone
 				desiredSubnetSpec.Tags = existingSubnet.Tags
 
+				// Update subnet route table ID in the subnet spec
+				if existingSubnet.RouteTableAssociation.RouteTableId != "" {
+					routeTableId := existingSubnet.RouteTableAssociation.RouteTableId
+					desiredSubnetSpec.RouteTableID = &routeTableId
+					if existingSubnet.RouteTableAssociation.AssociationStateCode != subnets.AssociationStateCodeAssociated {
+						allRouteTablesReady = false
+						allRouteTablesNotReadyMessage = fmt.Sprintf("Route table %s for subnet %s not ready", routeTableId, existingSubnet.SubnetId)
+						// e.g. RouteTableAssociationStateAssociating
+						allRouteTablesNotReadyReason = "RouteTableAssociationState" + cases.Title(language.English).String(string(existingSubnet.RouteTableAssociation.AssociationStateCode))
+					}
+				} else {
+					allRouteTablesReady = false
+					allRouteTablesNotReadyReason = "RouteTableNotCreated"
+					allRouteTablesNotReadyMessage = fmt.Sprintf("Route table not created for subnet %s", existingSubnet.SubnetId)
+				}
+
 				if existingSubnet.State != subnets.SubnetStateAvailable {
 					allSubnetsAvailable = false
 				}
@@ -278,11 +315,136 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 			}
 		}
 	}
-	if allSubnetsAvailable {
+
+	subnetsReadyConditionSeverity := conditions.GetSeverity(awsCluster, capa.SubnetsReadyCondition)
+	subnetsReadyConditionSeverityInfo := subnetsReadyConditionSeverity != nil && *subnetsReadyConditionSeverity == capi.ConditionSeverityInfo
+
+	subnetsReadyConditionLastChange := conditions.GetLastTransitionTime(awsCluster, capa.SubnetsReadyCondition)
+	subnetsReadyConditionTimeSinceLastChange := 0 * time.Minute
+	if subnetsReadyConditionLastChange != nil {
+		subnetsReadyConditionTimeSinceLastChange = time.Since(subnetsReadyConditionLastChange.Time)
+	}
+
+	if !allSubnetsAvailable {
+		// subnets are not available, so we wait for subnets to become available before proceeding
+		const subnetsNotAvailableReason = "SubnetsNotAvailable"
+		var newSeverity capi.ConditionSeverity
+		var newMessage string
+		var requeueTime time.Duration
+
+		// initially retry more often, but then back off, so we don't hammer the API server
+		if subnetsReadyConditionTimeSinceLastChange < 5*time.Minute && subnetsReadyConditionSeverityInfo {
+			// it's been less than 5 minutes, all good, just an info here,
+			// let's try again in a minute
+			newSeverity = capi.ConditionSeverityInfo
+			requeueTime = 1 * time.Minute
+			newMessage = "One or more subnets is still not available"
+		} else if subnetsReadyConditionTimeSinceLastChange < 15*time.Minute && subnetsReadyConditionSeverityInfo {
+			// it's been less than 15 minutes, all good, just an info here,
+			// let just wait a bit longer and try again in 5 minutes
+			newSeverity = capi.ConditionSeverityInfo
+			requeueTime = 5 * time.Minute
+			newMessage = "One or more subnets is still not available"
+		} else {
+			// it's been more than 15 minutes, it's taking a while, so now
+			// it's a warning, and let's try again in 15 minutes
+			newSeverity = capi.ConditionSeverityWarning
+			requeueTime = 15 * time.Minute
+			newMessage = "One or more subnets is still not available for more than 15 minutes"
+		}
+
+		conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, subnetsNotAvailableReason, newSeverity, newMessage)
+		return ctrl.Result{RequeueAfter: requeueTime}, nil
+	}
+
+	if allRouteTablesReady {
 		conditions.MarkTrue(awsCluster, capa.SubnetsReadyCondition)
 	} else {
-		conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, "SubnetNotAvailable", capi.ConditionSeverityWarning, "One or more subnets is still not available")
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+		// route tables are not ready (or not even created), we update condition
+		// and proceed with route tables reconciliation
+		if subnetsReadyConditionTimeSinceLastChange < 15*time.Minute && subnetsReadyConditionSeverityInfo {
+			// it's been less than 15 minutes, so all is still good
+			conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityInfo, allRouteTablesNotReadyMessage)
+		} else {
+			// it's been more than 15 minutes, route tables should have been associated until now
+			conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityWarning, allRouteTablesNotReadyMessage+" for more than 15 minutes")
+		}
+	}
+
+	// Reconcile route tables
+	{
+		reconcileRequest := aws.ReconcileRequest[routetables.Spec]{
+			Resource:    awsCluster,
+			ClusterName: awsCluster.Name,
+			CloudResourceRequest: aws.CloudResourceRequest[routetables.Spec]{
+				RoleARN:        roleArn,
+				Region:         awsCluster.Spec.Region,
+				AdditionalTags: awsCluster.Spec.AdditionalTags,
+				Spec: routetables.Spec{
+					VpcId: awsCluster.Spec.NetworkSpec.VPC.ID,
+				},
+			},
+		}
+		for _, awsSubnetSpec := range awsCluster.Spec.NetworkSpec.Subnets {
+			reconcileRequest.Spec.Subnets = append(reconcileRequest.Spec.Subnets, routetables.Subnet{
+				Id:               awsSubnetSpec.ID,
+				AvailabilityZone: awsSubnetSpec.AvailabilityZone,
+			})
+		}
+
+		result, err := r.routeTablesReconciler.Reconcile(ctx, reconcileRequest)
+		if err != nil {
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+
+		allRouteTablesReady = true
+		allRouteTablesNotReadyMessage = ""
+		allRouteTablesNotReadyReason = ""
+		for _, routeTableStatus := range result.Status {
+			for _, association := range routeTableStatus.RouteTableAssociation {
+				if association.AssociationStateCode != routetables.AssociationStateCodeAssociated {
+					allRouteTablesReady = false
+					allRouteTablesNotReadyMessage = fmt.Sprintf("Route table %s for subnet %s not ready", routeTableStatus.RouteTableId, association.SubnetId)
+					// e.g. RouteTableAssociationStateAssociating
+					allRouteTablesNotReadyReason = "RouteTableAssociationState" + cases.Title(language.English).String(string(association.AssociationStateCode))
+					break
+				}
+			}
+		}
+
+		if allRouteTablesReady {
+			// route tables are not ready
+			conditions.MarkTrue(awsCluster, capa.RouteTablesReadyCondition)
+		} else {
+			// route tables are not ready, so we requeue, let's just check how
+			// much we should wait before retrying
+			routeTablesReadyConditionSeverity := conditions.GetSeverity(awsCluster, capa.RouteTablesReadyCondition)
+			routeTablesReadyConditionSeverityInfo := routeTablesReadyConditionSeverity != nil && *routeTablesReadyConditionSeverity == capi.ConditionSeverityInfo
+
+			routeTablesReadyConditionLastChange := conditions.GetLastTransitionTime(awsCluster, capa.RouteTablesReadyCondition)
+			timeSinceLastChange := 0 * time.Minute
+			if routeTablesReadyConditionLastChange != nil {
+				timeSinceLastChange = time.Since(routeTablesReadyConditionLastChange.Time)
+			}
+
+			// initially retry more often, but then back off, so we don't hammer the API server
+			if timeSinceLastChange < 5*time.Minute && routeTablesReadyConditionSeverityInfo {
+				// it's been less than 5 minutes, all good, just an info here,
+				// let's try again in a minute
+				conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityInfo, allRouteTablesNotReadyMessage)
+				return ctrl.Result{RequeueAfter: time.Minute}, nil
+			} else if timeSinceLastChange < 15*time.Minute && routeTablesReadyConditionSeverityInfo {
+				// it's been less than 15 minutes, all good, just an info here,
+				// let just wait a bit longer and try again in 5 minutes
+				conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityInfo, allRouteTablesNotReadyMessage)
+				return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+			} else {
+				// it's been more than 15 minutes, it's taking a while, so now
+				// it's a warning, and let's try again in 15 minutes
+				conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, allRouteTablesNotReadyReason, capi.ConditionSeverityWarning, allRouteTablesNotReadyMessage+" for more than 15 minutes")
+				return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
+			}
+		}
 	}
 
 	cluster := &capi.Cluster{}
@@ -319,6 +481,38 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 }
 
 func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, err error) {
+	//
+	// Delete route tables
+	//
+	routeTablesDeleted := capiconditions.IsFalse(awsCluster, capa.RouteTablesReadyCondition) &&
+		capiconditions.GetReason(awsCluster, capa.RouteTablesReadyCondition) == capi.DeletedReason
+	if routeTablesDeleted {
+		logger.Info("Route tables are already deleted")
+	} else {
+		logger.Info("Deleting route tables")
+		routeTablesDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
+			Resource:    awsCluster,
+			ClusterName: awsCluster.Name,
+			CloudResourceRequest: aws.CloudResourceRequest[aws.DeletedCloudResourceSpec]{
+				RoleARN: roleArn,
+				Region:  awsCluster.Spec.Region,
+				Spec: aws.DeletedCloudResourceSpec{
+					Id: awsCluster.Spec.NetworkSpec.VPC.ID,
+				},
+			},
+		}
+		err = r.routeTablesReconciler.ReconcileDelete(ctx, routeTablesDeleteRequest)
+		if err != nil {
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+		// remove subnet IDs
+		for i := range awsCluster.Spec.NetworkSpec.Subnets {
+			awsCluster.Spec.NetworkSpec.Subnets[i].RouteTableID = nil
+		}
+		conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "Route tables have been deleted")
+		logger.Info("Deleted route tables")
+	}
+
 	//
 	// Delete subnets
 	//

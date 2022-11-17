@@ -65,6 +65,9 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (r
 	//
 	for _, desiredSubnet := range request.Spec.Subnets {
 		if existingSubnet, found := findExistingSubnet(existingSubnets, desiredSubnet); found {
+			//
+			// Existing subnet found
+			//
 			if desiredSubnet.SubnetId == "" {
 				// since we already found the existing subnet, the desired subnet
 				// should already have SubnetId set, but here we set it just in
@@ -76,7 +79,9 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (r
 
 			changedOrNewTags := tags.Diff(desiredSubnetTags, existingSubnet.Tags)
 			if len(changedOrNewTags) > 0 {
-				// update existing subnet
+				//
+				// Update existing subnet with new tags.
+				//
 				updateSubnetInput := UpdateSubnetInput{
 					RoleARN:  request.Spec.RoleARN,
 					Region:   spec.Region,
@@ -91,15 +96,18 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (r
 
 			// update results with existing subnet that we found here
 			result.Subnets = append(result.Subnets, SubnetStatus{
-				SubnetId:         existingSubnet.SubnetId,
-				VpcId:            existingSubnet.VpcId,
-				CidrBlock:        existingSubnet.CidrBlock,
-				AvailabilityZone: existingSubnet.AvailabilityZone,
-				State:            existingSubnet.State,
-				Tags:             desiredSubnetTags,
+				SubnetId:              existingSubnet.SubnetId,
+				VpcId:                 existingSubnet.VpcId,
+				CidrBlock:             existingSubnet.CidrBlock,
+				AvailabilityZone:      existingSubnet.AvailabilityZone,
+				State:                 existingSubnet.State,
+				RouteTableAssociation: existingSubnet.RouteTableAssociation,
+				Tags:                  desiredSubnetTags,
 			})
 		} else {
-			// create new subnet
+			//
+			// Desired subnet not found, let's create it.
+			//
 			createSubnetInput := CreateSubnetInput{
 				RoleARN:          spec.RoleARN,
 				Region:           spec.Region,
@@ -113,14 +121,19 @@ func (r *reconciler) Reconcile(ctx context.Context, request ReconcileRequest) (r
 				return ReconcileResult{}, microerror.Mask(err)
 			}
 
+			status := SubnetStatus{
+				SubnetId:         output.SubnetId,
+				VpcId:            output.VpcId,
+				CidrBlock:        output.CidrBlock,
+				AvailabilityZone: output.AvailabilityZone,
+				State:            output.State,
+				Tags:             output.Tags,
+			}
+
 			// update results with new subnet that we created here
-			result.Subnets = append(result.Subnets, SubnetStatus(output))
+			result.Subnets = append(result.Subnets, status)
 		}
 	}
-	// First we find the subnets that are already created (i.e. the desired ones
-	// that already exist). TODO: update existing subnets, e.g. to update tags.
-
-	// Then we
 
 	// Convert client output to reconcile result
 	for _, getSubnetOutput := range existingSubnets {
@@ -161,10 +174,11 @@ type ReconcileResult struct {
 }
 
 type SubnetStatus struct {
-	SubnetId         string
-	VpcId            string
-	CidrBlock        string
-	AvailabilityZone string
-	State            SubnetState
-	Tags             map[string]string
+	SubnetId              string
+	VpcId                 string
+	CidrBlock             string
+	AvailabilityZone      string
+	State                 SubnetState
+	RouteTableAssociation RouteTableAssociation
+	Tags                  map[string]string
 }

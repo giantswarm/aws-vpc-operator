@@ -10,6 +10,7 @@ rules:
   - infrastructure.cluster.x-k8s.io
   resources:
   - awsclusters
+  - awsclusters/status
   - clusters
   - clusters/status
   verbs:
@@ -34,6 +35,13 @@ rules:
   - get
   - create
   - update
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -59,7 +67,7 @@ metadata:
   {{- include "labels.common" . | nindent 4 }}
 rules:
 - apiGroups:
-  - extensions
+  - policy
   resources:
   - podsecuritypolicies
   verbs:

@@ -18,8 +18,9 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"time"
 
-	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/giantswarm/k8smetadata/pkg/annotation"
 	"github.com/giantswarm/microerror"
@@ -33,6 +34,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/assumerole"
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/subnets"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/vpc"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
@@ -42,7 +45,8 @@ type AWSClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	vpcReconciler vpc.Reconciler
+	vpcReconciler     vpc.Reconciler
+	subnetsReconciler subnets.Reconciler
 }
 
 // NewAWSClusterReconciler creates a new AWSClusterReconciler for specified client and scheme.
@@ -50,24 +54,40 @@ func NewAWSClusterReconciler(
 	client client.Client,
 	scheme *runtime.Scheme,
 	ec2Client *ec2.Client,
-	assumeRoleAPIClient stscreds.AssumeRoleAPIClient,
+	assumeRoleClient assumerole.Client,
 ) (*AWSClusterReconciler, error) {
+	if client == nil {
+		return nil, microerror.Maskf(errors.InvalidConfigError, "client must not be empty")
+	}
 	if ec2Client == nil {
 		return nil, microerror.Maskf(errors.InvalidConfigError, "ec2Client must not be empty")
 	}
-	if assumeRoleAPIClient == nil {
-		return nil, microerror.Maskf(errors.InvalidConfigError, "assumeRoleAPIClient must not be empty")
+	if assumeRoleClient == nil {
+		return nil, microerror.Maskf(errors.InvalidConfigError, "assumeRoleClient must not be empty")
 	}
 
 	var vpcReconciler vpc.Reconciler
 	{
-		vpcClient, err := vpc.NewClient(ec2Client, assumeRoleAPIClient)
-		if err == nil {
+		vpcClient, err := vpc.NewClient(ec2Client, assumeRoleClient)
+		if err != nil {
 			return nil, microerror.Mask(err)
 		}
 
 		vpcReconciler, err = vpc.NewReconciler(vpcClient)
-		if err == nil {
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+	}
+
+	var subnetsReconciler subnets.Reconciler
+	{
+		subnetsClient, err := subnets.NewClient(ec2Client, assumeRoleClient)
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+
+		subnetsReconciler, err = subnets.NewReconciler(subnetsClient)
+		if err != nil {
 			return nil, microerror.Mask(err)
 		}
 	}
@@ -76,7 +96,8 @@ func NewAWSClusterReconciler(
 		Client: client,
 		Scheme: scheme,
 
-		vpcReconciler: vpcReconciler,
+		vpcReconciler:     vpcReconciler,
+		subnetsReconciler: subnetsReconciler,
 	}, nil
 }
 
@@ -102,6 +123,7 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Get AWSCluster that we are reconciling
 	//
 	awsCluster := &capa.AWSCluster{}
+
 	err := r.Client.Get(ctx, req.NamespacedName, awsCluster)
 	if err != nil {
 		return ctrl.Result{}, microerror.Mask(err)
@@ -110,12 +132,14 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Check VPC mode. aws-vpc-operator reconciles only private VPCs.
 	vpcMode, vpcModeSet := awsCluster.Annotations[annotation.AWSVPCMode]
 	if !vpcModeSet || vpcMode != annotation.AWSVPCModePrivate {
+		var message string
+		if !vpcModeSet {
+			message = fmt.Sprintf("Annotation %s is not set, skipping", annotation.AWSVPCMode)
+		} else {
+			message = fmt.Sprintf("Annotation %s set to %s, skipping", annotation.AWSVPCMode, vpcMode)
+		}
+		log.Info(message, "namespace", req.Namespace, "name", req.Name)
 		return
-	}
-
-	// We don't reconcile AWSClusters that have VPC managed by CAPA
-	if awsCluster.Spec.NetworkSpec.VPC.IsManaged(awsCluster.Name) {
-		return ctrl.Result{}, nil
 	}
 
 	//
@@ -128,7 +152,7 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	defer func() {
 		conditionsToUpdate := []capi.ConditionType{
 			capa.VpcReadyCondition,
-			// capa.SubnetsReadyCondition,
+			capa.SubnetsReadyCondition,
 			// capa.RouteTablesReadyCondition,
 		}
 		err := patchHelper.Patch(
@@ -159,10 +183,12 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	vpcSpec := vpc.Spec{
-		ClusterName: awsCluster.Name,
-		RoleARN:     identity.Spec.RoleArn,
-		VpcId:       awsCluster.Spec.NetworkSpec.VPC.ID,
-		CidrBlock:   awsCluster.Spec.NetworkSpec.VPC.CidrBlock,
+		ClusterName:    awsCluster.Name,
+		RoleARN:        identity.Spec.RoleArn,
+		Region:         awsCluster.Spec.Region,
+		VpcId:          awsCluster.Spec.NetworkSpec.VPC.ID,
+		CidrBlock:      awsCluster.Spec.NetworkSpec.VPC.CidrBlock,
+		AdditionalTags: awsCluster.Spec.AdditionalTags,
 	}
 	status, err := r.vpcReconciler.Reconcile(ctx, vpcSpec)
 	if err != nil {
@@ -173,7 +199,71 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	awsCluster.Spec.NetworkSpec.VPC.ID = status.VpcId
 	awsCluster.Spec.NetworkSpec.VPC.CidrBlock = status.CidrBlock
 	awsCluster.Spec.NetworkSpec.VPC.Tags = status.Tags
-	conditions.MarkTrue(awsCluster, capa.VpcReadyCondition)
+	switch status.State {
+	case vpc.VpcStateAvailable:
+		conditions.MarkTrue(awsCluster, capa.VpcReadyCondition)
+	case vpc.VpcStatePending:
+		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, "VpcStatePending", capi.ConditionSeverityWarning, "VPC is in pending state")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	case "":
+		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, "VpcStateNotSet", capi.ConditionSeverityError, "VPC state is not set")
+		return ctrl.Result{}, microerror.Maskf(errors.VpcStateNotSetError, "VPC state is not set '%s'", status.State)
+	default:
+		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, "VpcStateUnknown", capi.ConditionSeverityError, "VPC is in unknown state")
+		return ctrl.Result{}, microerror.Maskf(errors.VpcStateUnknownError, "VPC is in unknown state '%s'", status.State)
+	}
+
+	//
+	// Reconcile subnets
+	//
+	subnetsReconcileRequest := subnets.ReconcileRequest{
+		Resource: awsCluster,
+		Spec: subnets.Spec{
+			ClusterName:    awsCluster.Name,
+			RoleARN:        identity.Spec.RoleArn,
+			VpcId:          awsCluster.Spec.NetworkSpec.VPC.ID,
+			AdditionalTags: awsCluster.Spec.AdditionalTags,
+			Region:         awsCluster.Spec.Region,
+		},
+	}
+	for _, awsSubnetSpec := range awsCluster.Spec.NetworkSpec.Subnets {
+		subnetSpec := subnets.SubnetSpec{
+			SubnetId:         awsSubnetSpec.ID,
+			CidrBlock:        awsSubnetSpec.CidrBlock,
+			AvailabilityZone: awsSubnetSpec.AvailabilityZone,
+			Tags:             awsSubnetSpec.Tags,
+		}
+		subnetsReconcileRequest.Spec.Subnets = append(subnetsReconcileRequest.Spec.Subnets, subnetSpec)
+	}
+	subnetsReconcileResult, err := r.subnetsReconciler.Reconcile(ctx, subnetsReconcileRequest)
+	if err != nil {
+		return ctrl.Result{}, microerror.Mask(err)
+	}
+
+	// Update AWSCluster subnets
+	allSubnetsAvailable := true
+	for _, existingSubnet := range subnetsReconcileResult.Subnets {
+		for i := range awsCluster.Spec.NetworkSpec.Subnets {
+			desiredSubnetSpec := &awsCluster.Spec.NetworkSpec.Subnets[i]
+			if desiredSubnetSpec.ID == existingSubnet.SubnetId || desiredSubnetSpec.CidrBlock == existingSubnet.CidrBlock {
+				desiredSubnetSpec.ID = existingSubnet.SubnetId
+				desiredSubnetSpec.CidrBlock = existingSubnet.CidrBlock
+				desiredSubnetSpec.AvailabilityZone = existingSubnet.AvailabilityZone
+				desiredSubnetSpec.Tags = existingSubnet.Tags
+
+				if existingSubnet.State != subnets.SubnetStateAvailable {
+					allSubnetsAvailable = false
+				}
+				break
+			}
+		}
+	}
+	if allSubnetsAvailable {
+		conditions.MarkTrue(awsCluster, capa.SubnetsReadyCondition)
+	} else {
+		conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, "SubnetNotAvailable", capi.ConditionSeverityWarning, "One or more subnets is still not available")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
 
 	return ctrl.Result{}, nil
 }

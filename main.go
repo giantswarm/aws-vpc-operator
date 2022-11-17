@@ -24,6 +24,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
+	capi "sigs.k8s.io/cluster-api/api/v1beta1"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -37,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/giantswarm/aws-vpc-operator/controllers"
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/assumerole"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -47,6 +50,8 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(capi.AddToScheme(scheme))
+	utilruntime.Must(capa.AddToScheme(scheme))
 
 	//+kubebuilder:scaffold:scheme
 }
@@ -100,12 +105,17 @@ func main() {
 	}
 	ec2Client := ec2.NewFromConfig(cfg)
 	assumeRoleAPIClient := sts.NewFromConfig(cfg)
+	assumeRoleClient, err := assumerole.NewClient(assumeRoleAPIClient)
+	if err != nil {
+		setupLog.Error(err, "unable to create client for assuming roles")
+		os.Exit(1)
+	}
 
 	awsReconciler, err := controllers.NewAWSClusterReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		ec2Client,
-		assumeRoleAPIClient,
+		assumeRoleClient,
 	)
 	if err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AWSCluster")

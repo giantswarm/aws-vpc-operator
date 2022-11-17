@@ -3,9 +3,7 @@ package vpc
 import (
 	"context"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/giantswarm/microerror"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -14,6 +12,7 @@ import (
 
 type GetVpcInput struct {
 	RoleARN     string
+	Region      string
 	VpcId       string
 	ClusterName string
 }
@@ -21,6 +20,7 @@ type GetVpcInput struct {
 type GetVpcOutput struct {
 	VpcId     string
 	CidrBlock string
+	State     VpcState
 	Tags      map[string]string
 }
 
@@ -32,21 +32,18 @@ func (c *client) Get(ctx context.Context, input GetVpcInput) (GetVpcOutput, erro
 	if input.RoleARN == "" {
 		return GetVpcOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
 	}
+	if input.Region == "" {
+		return GetVpcOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
+	}
 	if input.VpcId == "" {
 		return GetVpcOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
 
 	ec2Input := ec2.DescribeVpcsInput{
 		VpcIds: []string{input.VpcId},
-		Filters: []ec2Types.Filter{
-			{
-				Name:   aws.String("state"),
-				Values: []string{string(ec2Types.VpcStatePending), string(ec2Types.VpcStatePending)},
-			},
-		},
 	}
 
-	ec2Output, err := c.ec2Client.DescribeVpcs(ctx, &ec2Input, c.assumeRoleFunc(input.RoleARN))
+	ec2Output, err := c.ec2Client.DescribeVpcs(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
 	if err != nil {
 		return GetVpcOutput{}, microerror.Mask(err)
 	}
@@ -60,6 +57,7 @@ func (c *client) Get(ctx context.Context, input GetVpcInput) (GetVpcOutput, erro
 	output := GetVpcOutput{
 		VpcId:     *ec2Output.Vpcs[0].VpcId,
 		CidrBlock: *ec2Output.Vpcs[0].CidrBlock,
+		State:     VpcState(ec2Output.Vpcs[0].State),
 		Tags:      TagsToMap(ec2Output.Vpcs[0].Tags),
 	}
 	logger.Info("Got existing VPC", "vpc-id", output.VpcId, "cidr-block", output.CidrBlock)

@@ -21,3 +21,21 @@ var VpcConflictError = &microerror.Error{
 func IsVpcConflict(err error) bool {
 	return microerror.Cause(err) == VpcConflictError
 }
+
+var VpcStateUnknownError = &microerror.Error{
+	Kind: "VpcStateUnknown",
+}
+
+// IsVpcStateUnknown asserts VpcStateUnknownError.
+func IsVpcStateUnknown(err error) bool {
+	return microerror.Cause(err) == VpcStateUnknownError
+}
+
+var VpcStateNotSetError = &microerror.Error{
+	Kind: "VpcStateNotSet",
+}
+
+// IsVpcStateNotSet asserts VpcStateNotSetError.
+func IsVpcStateNotSet(err error) bool {
+	return microerror.Cause(err) == VpcStateNotSetError
+}

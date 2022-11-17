@@ -15,15 +15,13 @@ spec:
       annotations:
         kubectl.kubernetes.io/default-container: manager
       labels:
-        control-plane: controller-manager
+        {{- include "labels.selector" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "resource.default.name"  . }}
       securityContext:
         runAsNonRoot: true
         runAsUser: {{ .Values.pod.user.id }}
         runAsGroup: {{ .Values.pod.group.id }}
-        seccompProfile:
-          type: RuntimeDefault
       containers:
       - name: {{ .Chart.Name }}
         image: "{{ .Values.image.registry }}/{{ .Values.image.name }}:{{ .Values.image.tag }}"
@@ -32,11 +30,6 @@ spec:
         - /manager
         args:
         - --leader-elect
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - "ALL"
         livenessProbe:
           httpGet:
             path: /healthz
@@ -62,6 +55,10 @@ spec:
         env:
         - name: AWS_SHARED_CREDENTIALS_FILE
           value: {{ .Values.pod.credentials.dir }}/{{ .Values.pod.credentials.filename }}
+        - name: AWS_REGION
+          value: "{{ .Values.aws.region }}"
+        - name: AWS_DEFAULT_REGION
+          value: "{{ .Values.aws.region }}"
       terminationGracePeriodSeconds: 10
       volumes:
       - name: {{ .Values.pod.credentials.filename }}

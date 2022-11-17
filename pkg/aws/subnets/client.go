@@ -1,4 +1,4 @@
-package vpc
+package subnets
 
 import (
 	"context"
@@ -8,21 +8,14 @@ import (
 	"github.com/giantswarm/microerror"
 
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/assumerole"
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/tags"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
-type VpcState string
-
-// Enum values for VpcState
-const (
-	VpcStatePending   VpcState = "pending"
-	VpcStateAvailable VpcState = "available"
-)
-
 type Client interface {
-	Create(ctx context.Context, input CreateVpcInput) (CreateVpcOutput, error)
-	Get(ctx context.Context, input GetVpcInput) (GetVpcOutput, error)
-	Delete(ctx context.Context, input DeleteVpcInput) error
+	Create(ctx context.Context, input CreateSubnetInput) (CreateSubnetOutput, error)
+	Update(ctx context.Context, input UpdateSubnetInput) (UpdateSubnetOutput, error)
+	Get(ctx context.Context, input GetSubnetsInput) (GetSubnetsOutput, error)
 }
 
 func NewClient(ec2Client *ec2.Client, assumeRoleClient assumerole.Client) (Client, error) {
@@ -33,14 +26,21 @@ func NewClient(ec2Client *ec2.Client, assumeRoleClient assumerole.Client) (Clien
 		return nil, microerror.Maskf(errors.InvalidConfigError, "assumeRoleClient must not be empty")
 	}
 
+	tagsClient, err := tags.NewClient(ec2Client, assumeRoleClient)
+	if err != nil {
+		return nil, microerror.Mask(err)
+	}
+
 	return &client{
 		ec2Client:        ec2Client,
 		assumeRoleClient: assumeRoleClient,
+		tagsClient:       tagsClient,
 	}, nil
 }
 
 type client struct {
 	ec2Client        *ec2.Client
+	tagsClient       tags.Client
 	assumeRoleClient assumerole.Client
 }
 

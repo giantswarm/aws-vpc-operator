@@ -76,6 +76,8 @@ workflows:
           app_name: "aws-vpc-operator"
           app_collection_repo: "capa-app-collection"
           requires:
+          - push-aws-vpc-operator-to-docker
+          - push-aws-vpc-operator-to-quay
           - push-to-app-catalog
           filters:
             branches:

@@ -16,6 +16,7 @@ type Client interface {
 	Create(ctx context.Context, input CreateSubnetInput) (CreateSubnetOutput, error)
 	Update(ctx context.Context, input UpdateSubnetInput) (UpdateSubnetOutput, error)
 	Get(ctx context.Context, input GetSubnetsInput) (GetSubnetsOutput, error)
+	Delete(ctx context.Context, input DeleteSubnetsInput) error
 }
 
 func NewClient(ec2Client *ec2.Client, assumeRoleClient assumerole.Client) (Client, error) {

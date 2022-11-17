@@ -545,6 +545,35 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 
 func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, err error) {
 	//
+	// Delete VPC endpoint
+	//
+	vpcEndpointDeleted := capiconditions.IsFalse(awsCluster, VpcEndpointReady) &&
+		capiconditions.GetReason(awsCluster, VpcEndpointReady) == capi.DeletedReason
+	if vpcEndpointDeleted {
+		logger.Info("VPC endpoint is already deleted")
+	} else {
+		vpcId := awsCluster.Spec.NetworkSpec.VPC.ID
+		logger.Info("Deleting VPC endpoint", "vpc-id", vpcId)
+		vpcEndpointDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
+			Resource:    awsCluster,
+			ClusterName: awsCluster.Name,
+			CloudResourceRequest: aws.CloudResourceRequest[aws.DeletedCloudResourceSpec]{
+				RoleARN: roleArn,
+				Region:  awsCluster.Spec.Region,
+				Spec: aws.DeletedCloudResourceSpec{
+					Id: awsCluster.Spec.NetworkSpec.VPC.ID,
+				},
+			},
+		}
+		err = r.vpcEndpointReconciler.ReconcileDelete(ctx, vpcEndpointDeleteRequest)
+		if err != nil {
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+		conditions.MarkFalse(awsCluster, VpcEndpointReady, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC endpoint has been deleted")
+		logger.Info("Deleted VPC endpoint", "vpc-id", vpcId)
+	}
+
+	//
 	// Delete route tables
 	//
 	routeTablesDeleted := capiconditions.IsFalse(awsCluster, capa.RouteTablesReadyCondition) &&

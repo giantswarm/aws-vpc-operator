@@ -14,3 +14,4 @@ home: https://github.com/giantswarm/aws-vpc-operator
 # icon: https://s.giantswarm.io/app-icons/example/1/light.svg
 annotations:
   application.giantswarm.io/team: hydra
+  config.giantswarm.io/version: 1.x.x

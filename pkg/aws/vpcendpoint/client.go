@@ -22,6 +22,7 @@ const (
 type Client interface {
 	Create(ctx context.Context, input CreateVpcEndpointInput) (CreateVpcEndpointOutput, error)
 	Get(ctx context.Context, input GetVpcEndpointInput) (GetVpcEndpointOutput, error)
+	Update(ctx context.Context, input UpdateVpcEndpointInput) error
 	Delete(ctx context.Context, input DeleteVpcEndpointInput) error
 }
 

@@ -80,10 +80,28 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 		return result, nil
 	} else if err != nil {
 		return aws.ReconcileResult[Status]{}, microerror.Mask(err)
+	} else {
+		updateInput := UpdateVpcEndpointInput{
+			RoleARN:                 request.RoleARN,
+			Region:                  request.Region,
+			VpcEndpointId:           getOutput.VpcEndpointId,
+			CurrentSubnetIds:        getOutput.SubnetIds,
+			CurrentSecurityGroupIds: getOutput.SecurityGroupIds,
+			WantedSubnetIds:         request.Spec.SubnetIds,
+			WantedSecurityGroupIds:  request.Spec.SecurityGroupIds,
+			Tags:                    r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, getOutput.VpcEndpointId, request.Region, request.AdditionalTags),
+		}
+
+		err = r.client.Update(ctx, updateInput)
+		if err != nil {
+			return aws.ReconcileResult[Status]{}, microerror.Mask(err)
+		}
 	}
 
-	// TODO update existing VPC endpoint (e.g. update tags)
-	result.Status = Status(getOutput)
+	result.Status = Status{
+		VpcEndpointId:    getOutput.VpcEndpointId,
+		VpcEndpointState: getOutput.VpcEndpointState,
+	}
 	return result, nil
 }
 

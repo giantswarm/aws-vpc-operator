@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added ClusterRoles and ClusterRoleBindings.
 - Added PodSecurityPolicy.
 - Added NetworkPolicy.
+- Add `config.giantswarm.io/version: 1.x.x` annotation to `Chart.yaml`
 
 ### Changed
 

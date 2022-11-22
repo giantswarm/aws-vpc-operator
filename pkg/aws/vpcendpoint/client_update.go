@@ -9,6 +9,7 @@ import (
 	"github.com/giantswarm/microerror"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/giantswarm/aws-vpc-operator/pkg/aws/tags"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
@@ -95,6 +96,20 @@ func (c *client) Update(ctx context.Context, input UpdateVpcEndpointInput) (err 
 		}
 	} else {
 		logger.Info("VPC endpoint is  already up-to-date", "vpc-endpoint-id", input.VpcEndpointId)
+	}
+
+	logger.Info("Updating VPC endpoint tags", "tags", input.Tags)
+
+	// Update VPC endpoint tags
+	createTagsInput := tags.CreateTagsInput{
+		RoleARN:    input.RoleARN,
+		Region:     input.Region,
+		ResourceId: input.VpcEndpointId,
+		Tags:       input.Tags,
+	}
+	err = c.tagsClient.Create(ctx, createTagsInput)
+	if err != nil {
+		return microerror.Mask(err)
 	}
 
 	return nil

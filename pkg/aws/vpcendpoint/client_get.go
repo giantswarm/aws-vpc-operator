@@ -21,6 +21,8 @@ type GetVpcEndpointInput struct {
 type GetVpcEndpointOutput struct {
 	VpcEndpointId    string
 	VpcEndpointState string
+	SubnetIds        []string
+	SecurityGroupIds []string
 }
 
 func (c *client) Get(ctx context.Context, input GetVpcEndpointInput) (output GetVpcEndpointOutput, err error) {
@@ -72,6 +74,14 @@ func (c *client) Get(ctx context.Context, input GetVpcEndpointInput) (output Get
 	output = GetVpcEndpointOutput{
 		VpcEndpointId:    *ec2Output.VpcEndpoints[0].VpcEndpointId,
 		VpcEndpointState: string(ec2Output.VpcEndpoints[0].State),
+		SubnetIds:        ec2Output.VpcEndpoints[0].SubnetIds,
+	}
+
+	for _, securityGroup := range ec2Output.VpcEndpoints[0].Groups {
+		if securityGroup.GroupId == nil {
+			continue
+		}
+		output.SecurityGroupIds = append(output.SecurityGroupIds, *securityGroup.GroupId)
 	}
 
 	return output, err

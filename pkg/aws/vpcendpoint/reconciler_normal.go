@@ -3,6 +3,7 @@ package vpcendpoint
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/giantswarm/microerror"
 	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
@@ -80,10 +81,53 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 		return result, nil
 	} else if err != nil {
 		return aws.ReconcileResult[Status]{}, microerror.Mask(err)
+	} else {
+		// Sort current securityGroupIds and subnetIds, so we can use sort.SearchStrings
+		// when checking difference in slices.
+		// This modifies slice in-place, but we just use it here anyway, so that's
+		// fine.
+		currentSecurityGroupIds := cloneAndSort(getOutput.SecurityGroupIds)
+		wantedSecurityGroupIds := cloneAndSort(request.Spec.SecurityGroupIds)
+		currentSubnetIds := cloneAndSort(getOutput.SubnetIds)
+		wantedSubnetIds := cloneAndSort(request.Spec.SubnetIds)
+
+		// securityGroupIDs that we will add, those specified in the input, but not
+		// already present in current state
+		securityGroupIdsToBeAdded := diff(wantedSecurityGroupIds, currentSecurityGroupIds)
+
+		// securityGroupIDs that we will remove, those already in the current state,
+		// but not present in the input
+		securityGroupIdsToBeRemoved := diff(currentSecurityGroupIds, wantedSecurityGroupIds)
+
+		// subnets that we will add, those specified in the input, but not already
+		// present in current state
+		subnetIdsToBeAdded := diff(wantedSubnetIds, currentSubnetIds)
+
+		// subnets that we will remove, those already in the current state, but not
+		// present in the input
+		subnetIdsToBeRemoved := diff(currentSubnetIds, wantedSubnetIds)
+
+		updateInput := UpdateVpcEndpointInput{
+			RoleARN:                request.RoleARN,
+			Region:                 request.Region,
+			VpcEndpointId:          getOutput.VpcEndpointId,
+			AddSecurityGroupIds:    securityGroupIdsToBeAdded,
+			AddSubnetIds:           subnetIdsToBeAdded,
+			RemoveSecurityGroupIds: securityGroupIdsToBeRemoved,
+			RemoveSubnetIds:        subnetIdsToBeRemoved,
+			Tags:                   r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, getOutput.VpcEndpointId, request.Region, request.AdditionalTags),
+		}
+
+		err = r.client.Update(ctx, updateInput)
+		if err != nil {
+			return aws.ReconcileResult[Status]{}, microerror.Mask(err)
+		}
 	}
 
-	// TODO update existing VPC endpoint (e.g. update tags)
-	result.Status = Status(getOutput)
+	result.Status = Status{
+		VpcEndpointId:    getOutput.VpcEndpointId,
+		VpcEndpointState: getOutput.VpcEndpointState,
+	}
 	return result, nil
 }
 
@@ -110,4 +154,43 @@ func (r *reconciler) getVpcEndpointTags(clusterName, vpcId, vpcEndpointId, regio
 	}
 
 	return params.Build()
+}
+
+// cloneAndSort clones the input slice first and then sorts all elements in the
+// ascending order before returning the output. The cloning is done first
+// because the sorting will modify the sorted slice in-place.
+//
+// The function is used when we want to search through a slice and use functions
+// like sort.SearchStrings which require that the input slice is sorted.
+func cloneAndSort(input []string) []string {
+	if len(input) == 0 {
+		return []string{}
+	}
+
+	output := make([]string, len(input))
+	output = append(output, input...)
+	sort.Strings(output)
+
+	return output
+}
+
+// diff returns all values from sortedS1 and not present in sortedS2.
+//
+// Example:
+//
+//	["a", "b", "c", "d"] - ["a", "c", "e", "f"] = ["b", "d"]
+func diff(sortedS1, sortedS2 []string) []string {
+	var result []string
+
+	for _, s := range sortedS1 {
+		i := sort.SearchStrings(sortedS2, s)
+		if i < len(sortedS2) && sortedS2[i] == s {
+			// string s from sortedS1 found in sortedS2 at index i
+			continue
+		} else {
+			result = append(result, s)
+		}
+	}
+
+	return result
 }

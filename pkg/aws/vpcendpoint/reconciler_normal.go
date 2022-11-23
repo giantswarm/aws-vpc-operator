@@ -168,9 +168,7 @@ func cloneAndSort(input []string) []string {
 	}
 
 	output := make([]string, len(input))
-	for _, s := range input {
-		output = append(output, s)
-	}
+	output = append(output, input...)
 	sort.Strings(output)
 
 	return output

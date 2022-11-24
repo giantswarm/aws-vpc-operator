@@ -36,7 +36,10 @@ func (c *client) Delete(ctx context.Context, input DeleteVpcInput) error {
 		VpcId: aws.String(input.VpcId),
 	}
 	_, err := c.ec2Client.DeleteVpc(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
-	if err != nil {
+	if errors.IsVpcNotFound(err) {
+		logger.Info("VPC not found, nothing to delete", "vpc-id", input.VpcId)
+		return nil
+	} else if err != nil {
 		return microerror.Mask(err)
 	}
 	logger.Info("Deleted VPC with ID", "vpc-id", input.VpcId)

@@ -666,9 +666,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	//
 	// Delete VPC
 	//
-	if isDeleted(awsCluster, capa.VpcReadyCondition) {
-		logger.Info("VPC already deleted")
-	} else {
+	if awsCluster.Spec.NetworkSpec.VPC.ID != "" {
 		vpcId := awsCluster.Spec.NetworkSpec.VPC.ID
 		logger.Info("Deleting VPC", "vpc-id", vpcId)
 		vpcDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
@@ -682,6 +680,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 				},
 			},
 		}
+		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, capi.DeletingReason, capi.ConditionSeverityInfo, "VPC is being deleted")
 		err = r.vpcReconciler.ReconcileDelete(ctx, vpcDeleteRequest)
 		if err != nil {
 			return ctrl.Result{}, microerror.Mask(err)

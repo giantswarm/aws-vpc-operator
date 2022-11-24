@@ -1,16 +1,28 @@
 package errors
 
 import (
+	"errors"
+
+	"github.com/aws/smithy-go"
 	"github.com/giantswarm/microerror"
 )
+
+// isAWSVpcNotFound asserts that the specified AWS SDK error means that the VPC
+// is not found.
+func isAWSVpcNotFound(err error) bool {
+	const vpcNotFoundAWSErrorCode = "InvalidVpcID.NotFound"
+	var apiErr smithy.APIError
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == vpcNotFoundAWSErrorCode
+}
 
 var VpcNotFoundError = &microerror.Error{
 	Kind: "VpcNotFoundError",
 }
 
-// IsVpcNotFound asserts VpcNotFoundError.
+// IsVpcNotFound asserts that the error is of type VpcNotFoundError or AWS SDK
+// InvalidVpcID.NotFound error code.
 func IsVpcNotFound(err error) bool {
-	return microerror.Cause(err) == VpcNotFoundError
+	return microerror.Cause(err) == VpcNotFoundError || isAWSVpcNotFound(err)
 }
 
 var VpcConflictError = &microerror.Error{

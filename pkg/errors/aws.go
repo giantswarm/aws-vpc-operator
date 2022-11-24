@@ -2,10 +2,17 @@ package errors
 
 import (
 	"errors"
+	"net/http"
 
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/smithy-go"
 	"github.com/giantswarm/microerror"
 )
+
+func IsAWSHTTPStatusNotFound(err error) bool {
+	var httpResponseError *awshttp.ResponseError
+	return errors.As(err, httpResponseError) && httpResponseError.HTTPStatusCode() == http.StatusNotFound
+}
 
 // isAWSVpcNotFound asserts that the specified AWS SDK error means that the VPC
 // is not found.
@@ -22,7 +29,9 @@ var VpcNotFoundError = &microerror.Error{
 // IsVpcNotFound asserts that the error is of type VpcNotFoundError or AWS SDK
 // InvalidVpcID.NotFound error code.
 func IsVpcNotFound(err error) bool {
-	return microerror.Cause(err) == VpcNotFoundError || isAWSVpcNotFound(err)
+	return microerror.Cause(err) == VpcNotFoundError ||
+		isAWSVpcNotFound(err) ||
+		IsAWSHTTPStatusNotFound(err)
 }
 
 var VpcConflictError = &microerror.Error{

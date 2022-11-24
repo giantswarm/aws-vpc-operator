@@ -631,10 +631,14 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	//
 	// Delete subnets
 	//
-	if isDeleted(awsCluster, capa.SubnetsReadyCondition) {
-		logger.Info("Subnets are already deleted")
-	} else {
-		logger.Info("Deleting subnets")
+	var subnetsToDelete []string
+	for _, subnet := range awsCluster.Spec.NetworkSpec.Subnets {
+		if subnet.ID != "" {
+			subnetsToDelete = append(subnetsToDelete, subnet.ID)
+		}
+	}
+	if len(subnetsToDelete) > 0 {
+		logger.Info("Deleting subnets", "subnet-ids", subnetsToDelete)
 		subnetsDeleteRequest := aws.ReconcileRequest[[]aws.DeletedCloudResourceSpec]{
 			Resource:    awsCluster,
 			ClusterName: awsCluster.Name,
@@ -643,14 +647,13 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 				Region:  awsCluster.Spec.Region,
 			},
 		}
-		for _, awsSubnetSpec := range awsCluster.Spec.NetworkSpec.Subnets {
-			if awsSubnetSpec.ID != "" {
-				deletedSubnetSpec := aws.DeletedCloudResourceSpec{
-					Id: awsSubnetSpec.ID,
-				}
-				subnetsDeleteRequest.Spec = append(subnetsDeleteRequest.Spec, deletedSubnetSpec)
+		for _, subnetId := range subnetsToDelete {
+			deletedSubnetSpec := aws.DeletedCloudResourceSpec{
+				Id: subnetId,
 			}
+			subnetsDeleteRequest.Spec = append(subnetsDeleteRequest.Spec, deletedSubnetSpec)
 		}
+		conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, capi.DeletingReason, capi.ConditionSeverityInfo, "Subnets are being deleted")
 		err = r.subnetsReconciler.ReconcileDelete(ctx, subnetsDeleteRequest)
 		if err != nil {
 			return ctrl.Result{}, microerror.Mask(err)

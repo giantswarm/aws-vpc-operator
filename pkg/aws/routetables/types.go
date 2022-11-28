@@ -16,4 +16,5 @@ type RouteTableAssociation struct {
 	AssociationId        string
 	SubnetId             string
 	AssociationStateCode AssociationStateCode
+	Main                 bool
 }

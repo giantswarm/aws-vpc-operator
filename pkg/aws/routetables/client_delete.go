@@ -51,18 +51,29 @@ func (c *client) Delete(ctx context.Context, input DeleteRouteTableInput) (err e
 		return microerror.Mask(err)
 	}
 
+	isMainRouteTable := false
+
 	// now delete all existing route table associations
-	for _, associationId := range getOutput.GetAllAssociationIds() {
-		err = c.deleteRouteTableAssociation(ctx, input.RoleARN, input.Region, associationId)
+	for _, association := range getOutput.GetAllAssociations() {
+		if association.Main {
+			isMainRouteTable = true
+			logger.Info("Skipped deleting route table association for main route table", "route-table-id", input.RouteTableId, "association", association)
+			continue
+		}
+		err = c.deleteRouteTableAssociation(ctx, input.RoleARN, input.Region, input.RouteTableId, association.AssociationId)
 		if err != nil {
 			return microerror.Mask(err)
 		}
 	}
 
-	// finally, delete the route table itself
-	err = c.deleteRouteTable(ctx, input.RoleARN, input.Region, input.RouteTableId)
-	if err != nil {
-		return microerror.Mask(err)
+	if isMainRouteTable {
+		logger.Info("Skipped deleting main route table", "route-table-id", input.RouteTableId)
+	} else {
+		// finally, delete the route table itself
+		err = c.deleteRouteTable(ctx, input.RoleARN, input.Region, input.RouteTableId)
+		if err != nil {
+			return microerror.Mask(err)
+		}
 	}
 
 	return nil
@@ -96,63 +107,71 @@ func (c *client) DeleteAll(ctx context.Context, input DeleteRouteTablesInput) (e
 	}
 
 	for _, routeTable := range listOutput {
-		// first collect all associations to subnets and to all other resources
-		allAssociations := routeTable.GetAllAssociationIds()
+		isMainRouteTable := false
+		allAssociations := routeTable.GetAllAssociations()
 
 		// then we delete all route table associations
 		if len(allAssociations) > 0 {
 			logger.Info("Deleting subnet associations for route table", "route-table-id", routeTable.RouteTableId)
 		}
-		for _, associationId := range allAssociations {
-			logger.Info("Deleting route table association", "route-table-id", routeTable.RouteTableId, "association-id", associationId)
-			err = c.deleteRouteTableAssociation(ctx, input.RoleARN, input.Region, associationId)
-			if errors.IsAWSHTTPStatusNotFound(err) {
-				logger.Info("Route table association not found, nothing to delete", "route-table-id", routeTable.RouteTableId, "association-id", associationId)
+		for _, association := range allAssociations {
+			if association.Main {
+				logger.Info("Skipped deleting route table association for main route table", "route-table-id", routeTable.RouteTableId, "association", association)
+				isMainRouteTable = true
 				continue
-			} else if err != nil {
+			}
+			err = c.deleteRouteTableAssociation(ctx, input.RoleARN, input.Region, routeTable.RouteTableId, association.AssociationId)
+			if err != nil {
 				return microerror.Mask(err)
 			}
-			logger.Info("Deleted route table association", "route-table-id", routeTable.RouteTableId, "association-id", associationId)
-		}
-		if len(allAssociations) > 0 {
-			logger.Info("Deleted all associations for route table", "route-table-id", routeTable.RouteTableId)
 		}
 
-		// finally delete the route table itself
-		logger.Info("Deleting route table", "route-table-id", routeTable.RouteTableId)
-		err = c.deleteRouteTable(ctx, input.RoleARN, input.Region, routeTable.RouteTableId)
-		if errors.IsAWSHTTPStatusNotFound(err) {
-			logger.Info("Route table not found, nothing to delete", "route-table-id", routeTable.RouteTableId)
-			continue
-		} else if err != nil {
-			return microerror.Mask(err)
+		if isMainRouteTable {
+			logger.Info("Skipped deleting main route table", "route-table-id", routeTable.RouteTableId)
+		} else {
+			// finally delete the route table itself
+			err = c.deleteRouteTable(ctx, input.RoleARN, input.Region, routeTable.RouteTableId)
+			if err != nil {
+				return microerror.Mask(err)
+			}
 		}
-		logger.Info("Deleted route table", "route-table-id", routeTable.RouteTableId)
 	}
 
 	return nil
 }
 
-func (c *client) deleteRouteTableAssociation(ctx context.Context, roleArn, region, associationId string) error {
+func (c *client) deleteRouteTableAssociation(ctx context.Context, roleArn, region, routeTableId, associationId string) error {
+	logger := log.FromContext(ctx)
+	logger.Info("Deleting route table association", "route-table-id", routeTableId, "association", associationId)
 	ec2Input := ec2.DisassociateRouteTableInput{
 		AssociationId: aws.String(associationId),
 	}
 	_, err := c.ec2Client.DisassociateRouteTable(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(roleArn, region))
-	if err != nil {
+	if errors.IsAWSHTTPStatusNotFound(err) {
+		logger.Info("Route table association not found, nothing to delete", "route-table-id", routeTableId, "association-id", associationId)
+		return nil
+	} else if err != nil {
 		return microerror.Mask(err)
 	}
 
+	logger.Info("Deleted route table association", "route-table-id", routeTableId, "association-id", associationId)
 	return nil
 }
 
 func (c *client) deleteRouteTable(ctx context.Context, roleArn, region, routeTableId string) error {
+	logger := log.FromContext(ctx)
+	logger.Info("Deleting route table", "route-table-id", routeTableId)
 	ec2Input := ec2.DeleteRouteTableInput{
 		RouteTableId: aws.String(routeTableId),
 	}
 	_, err := c.ec2Client.DeleteRouteTable(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(roleArn, region))
-	if err != nil {
+	if errors.IsAWSHTTPStatusNotFound(err) {
+		logger.Info("Route table not found, nothing to delete", "route-table-id", routeTableId)
+		return nil
+	} else if err != nil {
 		return microerror.Mask(err)
 	}
 
+	logger.Info("Deleted route table", "route-table-id", routeTableId)
 	return nil
 }

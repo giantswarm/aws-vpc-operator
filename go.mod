@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.12.20
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.60.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.16.19
+	github.com/aws/smithy-go v1.13.3
 	github.com/giantswarm/k8smetadata v0.15.0
 	github.com/giantswarm/microerror v0.4.0
 	github.com/go-logr/logr v1.2.3
@@ -42,7 +43,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.9.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.11.23 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.13.5 // indirect
-	github.com/aws/smithy-go v1.13.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect

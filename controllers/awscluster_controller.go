@@ -601,9 +601,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	//
 	// Delete route tables
 	//
-	if isDeleted(awsCluster, capa.RouteTablesReadyCondition) {
-		logger.Info("Route tables are already deleted")
-	} else {
+	if awsCluster.Spec.NetworkSpec.VPC.ID != "" {
 		logger.Info("Deleting route tables")
 		routeTablesDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
 			Resource:    awsCluster,
@@ -616,11 +614,12 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 				},
 			},
 		}
+		conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, capi.DeletingReason, capi.ConditionSeverityInfo, "Route tables are being deleted")
 		err = r.routeTablesReconciler.ReconcileDelete(ctx, routeTablesDeleteRequest)
 		if err != nil {
 			return ctrl.Result{}, microerror.Mask(err)
 		}
-		// remove subnet IDs
+		// remove route table IDs
 		for i := range awsCluster.Spec.NetworkSpec.Subnets {
 			awsCluster.Spec.NetworkSpec.Subnets[i].RouteTableID = nil
 		}

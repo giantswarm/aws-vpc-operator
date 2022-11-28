@@ -10,7 +10,7 @@ import (
 )
 
 func IsAWSHTTPStatusNotFound(err error) bool {
-	var httpResponseError *awshttp.ResponseError
+	httpResponseError := &awshttp.ResponseError{}
 	return errors.As(err, httpResponseError) && httpResponseError.HTTPStatusCode() == http.StatusNotFound
 }
 

@@ -10,8 +10,8 @@ import (
 )
 
 func IsAWSHTTPStatusNotFound(err error) bool {
-	httpResponseError := &awshttp.ResponseError{}
-	return errors.As(err, httpResponseError) && httpResponseError.HTTPStatusCode() == http.StatusNotFound
+	var httpResponseError *awshttp.ResponseError
+	return errors.As(err, &httpResponseError) && httpResponseError.HTTPStatusCode() == http.StatusNotFound
 }
 
 // isAWSVpcNotFound asserts that the specified AWS SDK error means that the VPC

@@ -22,15 +22,30 @@ func isAWSVpcNotFound(err error) bool {
 	return errors.As(err, &apiErr) && apiErr.ErrorCode() == vpcNotFoundAWSErrorCode
 }
 
+// isAWSSubnetNotFound asserts that the specified AWS SDK error means that the
+// subnet is not found.
+func isAWSSubnetNotFound(err error) bool {
+	const subnetNotFoundAWSErrorCode = "InvalidSubnetID.NotFound"
+	var apiErr smithy.APIError
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == subnetNotFoundAWSErrorCode
+}
+
 var VpcNotFoundError = &microerror.Error{
 	Kind: "VpcNotFoundError",
 }
 
-// IsVpcNotFound asserts that the error is of type VpcNotFoundError or AWS SDK
-// InvalidVpcID.NotFound error code.
+// IsVpcNotFound asserts that the error is of type VpcNotFoundError, AWS SDK
+// InvalidVpcID.NotFound error code, or  AWS SDK not found error.
 func IsVpcNotFound(err error) bool {
 	return microerror.Cause(err) == VpcNotFoundError ||
 		isAWSVpcNotFound(err) ||
+		IsAWSHTTPStatusNotFound(err)
+}
+
+// IsSubnetNotFound asserts that the error is AWS SDK InvalidSubnetID.NotFound
+// error or AWS SDK not found error.
+func IsSubnetNotFound(err error) bool {
+	return isAWSSubnetNotFound(err) ||
 		IsAWSHTTPStatusNotFound(err)
 }
 

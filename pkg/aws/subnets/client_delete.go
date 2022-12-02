@@ -44,7 +44,7 @@ func (c *client) Delete(ctx context.Context, input DeleteSubnetsInput) (err erro
 			SubnetId: aws.String(subnetId),
 		}
 		_, err = c.ec2Client.DeleteSubnet(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
-		if errors.IsAWSHTTPStatusNotFound(err) {
+		if errors.IsSubnetNotFound(err) {
 			logger.Info("Subnet not found, nothing to delete", "subnet-id", subnetId)
 			continue
 		} else if err != nil {

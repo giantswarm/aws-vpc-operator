@@ -694,8 +694,6 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 			return ctrl.Result{}, microerror.Mask(err)
 		}
 		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC has been deleted")
-		// unset VPC ID as we have deleted the AWS VPC, so the ID is not valid anymore
-		awsCluster.Spec.NetworkSpec.VPC.ID = ""
 		logger.Info("Deleted VPC", "vpc-id", vpcId)
 	}
 

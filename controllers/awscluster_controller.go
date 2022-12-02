@@ -588,6 +588,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 		logger.Info("CAPA failed to delete load balancer, trying deletion of route tables, subnets and VPC again in 15 minutes")
 		return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
 	}
+	logger.Info("CAPA deleted load balancer, proceeding with deletion")
 
 	//
 	// Wait for CAPA to delete security groups before we delete VPC, subnets and route tables.
@@ -601,6 +602,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 		logger.Info("CAPA failed to delete security groups, trying deletion of route tables, subnets and VPC again in 15 minutes")
 		return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
 	}
+	logger.Info("CAPA deleted security groups, proceeding with deletion")
 
 	//
 	// Delete route tables

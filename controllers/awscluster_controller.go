@@ -28,6 +28,7 @@ import (
 	"github.com/go-logr/logr"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+	apimachineryerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
@@ -172,7 +173,10 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	awsCluster := &capa.AWSCluster{}
 
 	err := r.Client.Get(ctx, req.NamespacedName, awsCluster)
-	if err != nil {
+	if apimachineryerrors.IsNotFound(err) {
+		log.Info("AWSCluster no longer exists")
+		return ctrl.Result{}, nil
+	} else if err != nil {
 		return ctrl.Result{}, microerror.Mask(err)
 	}
 

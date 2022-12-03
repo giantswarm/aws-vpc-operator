@@ -28,7 +28,7 @@ import (
 	"github.com/go-logr/logr"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
-	apimachineryerrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
@@ -173,7 +173,7 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	awsCluster := &capa.AWSCluster{}
 
 	err := r.Client.Get(ctx, req.NamespacedName, awsCluster)
-	if apimachineryerrors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		log.Info("AWSCluster no longer exists")
 		return ctrl.Result{}, nil
 	} else if err != nil {
@@ -228,7 +228,13 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			patch.WithOwnedConditions{
 				Conditions: conditionsToUpdate,
 			})
+		if !awsCluster.DeletionTimestamp.IsZero() && apierrors.IsNotFound(err) {
+			// AWSCluster is already deleted, so ignore not found error since
+			// there is nothing to upgrade
+			return
+		}
 		if err != nil {
+			// An error occurred while patching the AWSCluster resource
 			reterr = err
 		}
 	}()

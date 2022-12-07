@@ -22,9 +22,30 @@ type ListRouteTablesInput struct {
 type ListRouteTablesOutput []RouteTableOutput
 
 type RouteTableOutput struct {
-	RouteTableId      string
-	AssociatedSubnets []RouteTableAssociation
-	Tags              map[string]string
+	RouteTableId string
+
+	// AssociationsToSubnets contains all subnets to which the route table is associated to.
+	AssociationsToSubnets []RouteTableAssociation
+
+	// OtherAssociations contains IDs of all route table associations to
+	// resources other than subnets.
+	//
+	// These are separated from AssociationsToSubnets because in most cases we care
+	// about subnet associations only. Other associations are used less often,
+	// during route table deletion for example.
+	OtherAssociations []RouteTableAssociation
+
+	// Tags that are currently set on the AWS route table resource.
+	Tags map[string]string
+}
+
+// GetAllAssociations returns all route table associations (to subnets and other
+// resources).
+func (rto RouteTableOutput) GetAllAssociations() []RouteTableAssociation {
+	var allAssociations []RouteTableAssociation
+	allAssociations = append(allAssociations, rto.AssociationsToSubnets...)
+	allAssociations = append(allAssociations, rto.OtherAssociations...)
+	return allAssociations
 }
 
 func (c *client) List(ctx context.Context, input ListRouteTablesInput) (output ListRouteTablesOutput, err error) {
@@ -89,23 +110,28 @@ func (c *client) listWithFilter(ctx context.Context, roleArn, region, filterName
 				logger.Info("Skipping adding route table association to output when listing (association ID not set)")
 				continue
 			}
-			if ec2RouteTableAssociation.SubnetId == nil {
-				logger.Info("Skipping adding route table association to output when listing route tables (subnet ID not set)", "route-table-id", *ec2RouteTable.RouteTableId, "association-id", *ec2RouteTableAssociation.RouteTableAssociationId)
-				continue
-			}
+			associationId := *ec2RouteTableAssociation.RouteTableAssociationId
 
 			routeTableAssociation := RouteTableAssociation{
-				AssociationId: *ec2RouteTableAssociation.RouteTableAssociationId,
-				SubnetId:      *ec2RouteTableAssociation.SubnetId,
+				AssociationId: associationId,
+				Main:          ec2RouteTableAssociation.Main != nil && *ec2RouteTableAssociation.Main,
 			}
-
 			if ec2RouteTableAssociation.AssociationState != nil {
 				routeTableAssociation.AssociationStateCode = AssociationStateCode(ec2RouteTableAssociation.AssociationState.State)
 			} else {
 				routeTableAssociation.AssociationStateCode = AssociationStateCodeUnknown
 			}
 
-			routeTableOutput.AssociatedSubnets = append(routeTableOutput.AssociatedSubnets, routeTableAssociation)
+			if ec2RouteTableAssociation.SubnetId != nil {
+				// We found an association to a subnet
+				routeTableAssociation.SubnetId = *ec2RouteTableAssociation.SubnetId
+				routeTableOutput.AssociationsToSubnets = append(routeTableOutput.AssociationsToSubnets, routeTableAssociation)
+			} else {
+				// We found an association to a resource other than subnet, we just
+				// add association ID to the list of all associations
+				logger.Info("Found route table associated to a resource other than subnet", "route-table-id", *ec2RouteTable.RouteTableId, "association-id", *ec2RouteTableAssociation.RouteTableAssociationId)
+				routeTableOutput.OtherAssociations = append(routeTableOutput.OtherAssociations, routeTableAssociation)
+			}
 		}
 
 		output = append(output, routeTableOutput)

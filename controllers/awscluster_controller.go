@@ -28,6 +28,7 @@ import (
 	"github.com/go-logr/logr"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
@@ -172,7 +173,10 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	awsCluster := &capa.AWSCluster{}
 
 	err := r.Client.Get(ctx, req.NamespacedName, awsCluster)
-	if err != nil {
+	if apierrors.IsNotFound(err) {
+		log.Info("AWSCluster no longer exists")
+		return ctrl.Result{}, nil
+	} else if err != nil {
 		return ctrl.Result{}, microerror.Mask(err)
 	}
 
@@ -224,7 +228,13 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			patch.WithOwnedConditions{
 				Conditions: conditionsToUpdate,
 			})
+		if !awsCluster.DeletionTimestamp.IsZero() && apierrors.IsNotFound(err) {
+			// AWSCluster is already deleted, so ignore not found error since
+			// there is nothing to upgrade
+			return
+		}
 		if err != nil {
+			// An error occurred while patching the AWSCluster resource
 			reterr = err
 		}
 	}()
@@ -584,6 +594,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 		logger.Info("CAPA failed to delete load balancer, trying deletion of route tables, subnets and VPC again in 15 minutes")
 		return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
 	}
+	logger.Info("CAPA deleted load balancer, proceeding with deletion")
 
 	//
 	// Wait for CAPA to delete security groups before we delete VPC, subnets and route tables.
@@ -597,13 +608,12 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 		logger.Info("CAPA failed to delete security groups, trying deletion of route tables, subnets and VPC again in 15 minutes")
 		return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
 	}
+	logger.Info("CAPA deleted security groups, proceeding with deletion")
 
 	//
 	// Delete route tables
 	//
-	if isDeleted(awsCluster, capa.RouteTablesReadyCondition) {
-		logger.Info("Route tables are already deleted")
-	} else {
+	if awsCluster.Spec.NetworkSpec.VPC.ID != "" {
 		logger.Info("Deleting route tables")
 		routeTablesDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
 			Resource:    awsCluster,
@@ -616,11 +626,12 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 				},
 			},
 		}
+		conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, capi.DeletingReason, capi.ConditionSeverityInfo, "Route tables are being deleted")
 		err = r.routeTablesReconciler.ReconcileDelete(ctx, routeTablesDeleteRequest)
 		if err != nil {
 			return ctrl.Result{}, microerror.Mask(err)
 		}
-		// remove subnet IDs
+		// remove route table IDs
 		for i := range awsCluster.Spec.NetworkSpec.Subnets {
 			awsCluster.Spec.NetworkSpec.Subnets[i].RouteTableID = nil
 		}
@@ -631,10 +642,14 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	//
 	// Delete subnets
 	//
-	if isDeleted(awsCluster, capa.SubnetsReadyCondition) {
-		logger.Info("Subnets are already deleted")
-	} else {
-		logger.Info("Deleting subnets")
+	var subnetsToDelete []string
+	for _, subnet := range awsCluster.Spec.NetworkSpec.Subnets {
+		if subnet.ID != "" {
+			subnetsToDelete = append(subnetsToDelete, subnet.ID)
+		}
+	}
+	if len(subnetsToDelete) > 0 {
+		logger.Info("Deleting subnets", "subnet-ids", subnetsToDelete)
 		subnetsDeleteRequest := aws.ReconcileRequest[[]aws.DeletedCloudResourceSpec]{
 			Resource:    awsCluster,
 			ClusterName: awsCluster.Name,
@@ -643,14 +658,13 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 				Region:  awsCluster.Spec.Region,
 			},
 		}
-		for _, awsSubnetSpec := range awsCluster.Spec.NetworkSpec.Subnets {
-			if awsSubnetSpec.ID != "" {
-				deletedSubnetSpec := aws.DeletedCloudResourceSpec{
-					Id: awsSubnetSpec.ID,
-				}
-				subnetsDeleteRequest.Spec = append(subnetsDeleteRequest.Spec, deletedSubnetSpec)
+		for _, subnetId := range subnetsToDelete {
+			deletedSubnetSpec := aws.DeletedCloudResourceSpec{
+				Id: subnetId,
 			}
+			subnetsDeleteRequest.Spec = append(subnetsDeleteRequest.Spec, deletedSubnetSpec)
 		}
+		conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, capi.DeletingReason, capi.ConditionSeverityInfo, "Subnets are being deleted")
 		err = r.subnetsReconciler.ReconcileDelete(ctx, subnetsDeleteRequest)
 		if err != nil {
 			return ctrl.Result{}, microerror.Mask(err)
@@ -666,9 +680,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	//
 	// Delete VPC
 	//
-	if isDeleted(awsCluster, capa.VpcReadyCondition) {
-		logger.Info("VPC already deleted")
-	} else {
+	if awsCluster.Spec.NetworkSpec.VPC.ID != "" {
 		vpcId := awsCluster.Spec.NetworkSpec.VPC.ID
 		logger.Info("Deleting VPC", "vpc-id", vpcId)
 		vpcDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
@@ -682,13 +694,12 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 				},
 			},
 		}
+		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, capi.DeletingReason, capi.ConditionSeverityInfo, "VPC is being deleted")
 		err = r.vpcReconciler.ReconcileDelete(ctx, vpcDeleteRequest)
 		if err != nil {
 			return ctrl.Result{}, microerror.Mask(err)
 		}
 		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC has been deleted")
-		// unset VPC ID as we have deleted the AWS VPC, so the ID is not valid anymore
-		awsCluster.Spec.NetworkSpec.VPC.ID = ""
 		logger.Info("Deleted VPC", "vpc-id", vpcId)
 	}
 

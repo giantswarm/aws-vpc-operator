@@ -15,9 +15,7 @@ type GetRouteTableInput struct {
 	RouteTableId string
 }
 
-type GetRouteTableOutput RouteTableOutput
-
-func (c *client) Get(ctx context.Context, input GetRouteTableInput) (output GetRouteTableOutput, err error) {
+func (c *client) Get(ctx context.Context, input GetRouteTableInput) (output RouteTableOutput, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Started getting route table")
 	defer func() {
@@ -29,25 +27,25 @@ func (c *client) Get(ctx context.Context, input GetRouteTableInput) (output GetR
 	}()
 
 	if input.RoleARN == "" {
-		return GetRouteTableOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
+		return RouteTableOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RoleARN must not be empty", input)
 	}
 	if input.Region == "" {
-		return GetRouteTableOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
+		return RouteTableOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
 	}
 	if input.RouteTableId == "" {
-		return GetRouteTableOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RouteTableId must not be empty", input)
+		return RouteTableOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.RouteTableId must not be empty", input)
 	}
 
 	const routeTableIdFilterName = "route-table-id"
 	listOutput, err := c.listWithFilter(ctx, input.RoleARN, input.Region, routeTableIdFilterName, input.RouteTableId)
 	if err != nil {
-		return GetRouteTableOutput{}, microerror.Mask(err)
+		return RouteTableOutput{}, microerror.Mask(err)
 	}
 
 	if len(listOutput) == 0 {
-		return GetRouteTableOutput{}, microerror.Maskf(errors.RouteTableNotFoundError, "Route table with ID %s is not found", input.RouteTableId)
+		return RouteTableOutput{}, microerror.Maskf(errors.RouteTableNotFoundError, "Route table with ID %s is not found", input.RouteTableId)
 	}
 
-	output = GetRouteTableOutput(listOutput[0])
+	output = listOutput[0]
 	return output, nil
 }

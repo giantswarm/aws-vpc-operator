@@ -1,16 +1,52 @@
 package errors
 
 import (
+	"errors"
+	"net/http"
+
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
+	"github.com/aws/smithy-go"
 	"github.com/giantswarm/microerror"
 )
+
+func IsAWSHTTPStatusNotFound(err error) bool {
+	var httpResponseError *awshttp.ResponseError
+	return errors.As(err, &httpResponseError) && httpResponseError.HTTPStatusCode() == http.StatusNotFound
+}
+
+// isAWSVpcNotFound asserts that the specified AWS SDK error means that the VPC
+// is not found.
+func isAWSVpcNotFound(err error) bool {
+	const vpcNotFoundAWSErrorCode = "InvalidVpcID.NotFound"
+	var apiErr smithy.APIError
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == vpcNotFoundAWSErrorCode
+}
+
+// isAWSSubnetNotFound asserts that the specified AWS SDK error means that the
+// subnet is not found.
+func isAWSSubnetNotFound(err error) bool {
+	const subnetNotFoundAWSErrorCode = "InvalidSubnetID.NotFound"
+	var apiErr smithy.APIError
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == subnetNotFoundAWSErrorCode
+}
 
 var VpcNotFoundError = &microerror.Error{
 	Kind: "VpcNotFoundError",
 }
 
-// IsVpcNotFound asserts VpcNotFoundError.
+// IsVpcNotFound asserts that the error is of type VpcNotFoundError, AWS SDK
+// InvalidVpcID.NotFound error code, or  AWS SDK not found error.
 func IsVpcNotFound(err error) bool {
-	return microerror.Cause(err) == VpcNotFoundError
+	return microerror.Cause(err) == VpcNotFoundError ||
+		isAWSVpcNotFound(err) ||
+		IsAWSHTTPStatusNotFound(err)
+}
+
+// IsSubnetNotFound asserts that the error is AWS SDK InvalidSubnetID.NotFound
+// error or AWS SDK not found error.
+func IsSubnetNotFound(err error) bool {
+	return isAWSSubnetNotFound(err) ||
+		IsAWSHTTPStatusNotFound(err)
 }
 
 var VpcConflictError = &microerror.Error{

@@ -78,7 +78,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 		logger.Info("Found existing route table", "route-table-id", existingRouteTable.RouteTableId)
 		isAssociatedToDesiredSubnet := false
 		isAssociatedToExternalSubnet := false
-		for _, associatedSubnet := range existingRouteTable.AssociatedSubnets {
+		for _, associatedSubnet := range existingRouteTable.AssociationsToSubnets {
 			if _, isDesiredSubnet := subnetToRouteTable[associatedSubnet.SubnetId]; isDesiredSubnet {
 				// see 1.a and 2.a above
 				routeTable := existingRouteTable
@@ -171,7 +171,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 
 		routeTableStatus := Status{
 			RouteTableId:          routeTable.RouteTableId,
-			RouteTableAssociation: routeTable.AssociatedSubnets,
+			RouteTableAssociation: routeTable.AssociationsToSubnets,
 		}
 		result.Status = append(result.Status, routeTableStatus)
 	}

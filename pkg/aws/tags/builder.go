@@ -50,8 +50,5 @@ func (p BuildParams) Build() map[string]string {
 
 	tags[NameAWSProviderPrefix+p.ClusterName] = "owned"
 
-	// CAPA is also setting "cluster/$cluster_id=owned" tag which makes the
-	// resource to be managed by CAPA, so we skip that here.
-
 	return tags
 }

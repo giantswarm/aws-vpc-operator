@@ -7,6 +7,9 @@ import (
 const (
 	NameAWSProviderPrefix = "github.com/giantswarm/aws-vpc-operator/"
 	NameAWSRole           = NameAWSProviderPrefix + "role"
+
+	CAPARole  = "sigs.k8s.io/cluster-api-provider-aws/role"
+	CAPAOwned = "sigs.k8s.io/cluster-api-provider-aws/cluster/"
 )
 
 // BuildParams is used to build tags around an aws resource.
@@ -47,6 +50,9 @@ func (p BuildParams) Build() map[string]string {
 	if p.Name != "" {
 		tags["Name"] = p.Name
 	}
+
+	tags[CAPARole] = p.Role
+	tags[CAPAOwned+p.ClusterName] = "owned"
 
 	// CAPA is also setting "cluster/$cluster_id=owned" tag which makes the
 	// resource to be managed by CAPA, so we skip that here.

@@ -56,6 +56,7 @@ const (
 
 	VpcEndpointReady              capi.ConditionType = "VpcEndpointReady"
 	ClusterSecurityGroupsNotReady string             = "ClusterSecurityGroupsNotReady"
+	SubnetLookupFailed            string             = "SubnetLookupFailed"
 )
 
 // AWSClusterReconciler reconciles a AWSCluster object
@@ -65,6 +66,7 @@ type AWSClusterReconciler struct {
 
 	vpcReconciler         vpc.Reconciler
 	subnetsReconciler     subnets.Reconciler
+	subnetsClient         subnets.Client
 	routeTablesReconciler routetables.Reconciler
 	vpcEndpointReconciler vpcendpoint.Reconciler
 }
@@ -85,6 +87,7 @@ func NewAWSClusterReconciler(
 	if assumeRoleClient == nil {
 		return nil, microerror.Maskf(errors.InvalidConfigError, "assumeRoleClient must not be empty")
 	}
+	var err error
 
 	var vpcReconciler vpc.Reconciler
 	{
@@ -99,13 +102,16 @@ func NewAWSClusterReconciler(
 		}
 	}
 
-	var subnetsReconciler subnets.Reconciler
+	var subnetsClient subnets.Client
 	{
-		subnetsClient, err := subnets.NewClient(ec2Client, assumeRoleClient)
+		subnetsClient, err = subnets.NewClient(ec2Client, assumeRoleClient)
 		if err != nil {
 			return nil, microerror.Mask(err)
 		}
 
+	}
+	var subnetsReconciler subnets.Reconciler
+	{
 		subnetsReconciler, err = subnets.NewReconciler(subnetsClient)
 		if err != nil {
 			return nil, microerror.Mask(err)
@@ -144,6 +150,7 @@ func NewAWSClusterReconciler(
 
 		vpcReconciler:         vpcReconciler,
 		subnetsReconciler:     subnetsReconciler,
+		subnetsClient:         subnetsClient,
 		routeTablesReconciler: routeTablesReconciler,
 		vpcEndpointReconciler: vpcEndpointReconciler,
 	}, nil
@@ -247,6 +254,7 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 }
 
 func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, reterr error) {
+	log := log.FromContext(ctx)
 	// If the AWSCluster doesn't have our finalizer, add it.
 	controllerutil.AddFinalizer(awsCluster, AwsVpcOperatorFinalizer)
 
@@ -529,9 +537,28 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 				AdditionalTags: awsCluster.Spec.AdditionalTags,
 			},
 		}
-		for _, subnet := range awsCluster.Spec.NetworkSpec.Subnets {
-			reconcileRequest.Spec.SubnetIds = append(reconcileRequest.Spec.SubnetIds, subnet.ID)
+
+		subnetIDs, err := r.subnetsClient.GetEndpointSubnets(ctx, awsCluster.Name)
+		if err != nil {
+			log.Error(err, "Failed to lookup subnets")
+			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, SubnetLookupFailed, capi.ConditionSeverityWarning, "Failed to lookup subnets to use for VPC Endpoints")
+			return ctrl.Result{}, err
 		}
+		// If no specific subnets found we'll fallback to picking any from the cluster
+		if len(subnetIDs) == 0 {
+			log.Info("No specific subnets found for VPC endpoints, falling back to using subnets from AWSCluster spec")
+			selectedAZs := map[string]bool{}
+			for _, subnet := range awsCluster.Spec.NetworkSpec.Subnets {
+				if selectedAZs[subnet.AvailabilityZone] {
+					// VPC endpoints can only have a single subnet per AZ so we'll skip any additional
+					continue
+				}
+				subnetIDs = append(reconcileRequest.Spec.SubnetIds, subnet.ID)
+				selectedAZs[subnet.AvailabilityZone] = true
+			}
+		}
+		reconcileRequest.Spec.SubnetIds = subnetIDs
+
 		for _, securityGroup := range awsCluster.Status.Network.SecurityGroups {
 			reconcileRequest.Spec.SecurityGroupIds = append(reconcileRequest.Spec.SecurityGroupIds, securityGroup.ID)
 		}

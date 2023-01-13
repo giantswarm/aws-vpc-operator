@@ -37,6 +37,12 @@ type GetSubnetOutput struct {
 	Tags                  map[string]string
 }
 
+type GetEndpointSubnetsInput struct {
+	RoleARN     string
+	Region      string
+	ClusterName string
+}
+
 func (c *client) Get(ctx context.Context, input GetSubnetsInput) (output GetSubnetsOutput, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Started getting subnet")
@@ -171,14 +177,14 @@ func (c *client) Get(ctx context.Context, input GetSubnetsInput) (output GetSubn
 	return output, nil
 }
 
-func (c *client) GetEndpointSubnets(ctx context.Context, clusterName string) ([]string, error) {
+func (c *client) GetEndpointSubnets(ctx context.Context, input GetEndpointSubnetsInput) ([]string, error) {
 	subnetIDs := []string{}
 	output, err := c.ec2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
 		Filters: []ec2Types.Filter{
-			{Name: aws.String(capa.NameKubernetesAWSCloudProviderPrefix + clusterName), Values: []string{"owned", "shared"}},
+			{Name: aws.String(capa.NameKubernetesAWSCloudProviderPrefix + input.ClusterName), Values: []string{"owned", "shared"}},
 			{Name: aws.String("subnet.giantswarm.io/endpoints"), Values: []string{"true"}},
 		},
-	})
+	}, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
 	if err != nil {
 		return subnetIDs, err
 	}

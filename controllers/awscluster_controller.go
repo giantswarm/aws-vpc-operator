@@ -538,7 +538,11 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 			},
 		}
 
-		subnetIDs, err := r.subnetsClient.GetEndpointSubnets(ctx, awsCluster.Name)
+		subnetIDs, err := r.subnetsClient.GetEndpointSubnets(ctx, subnets.GetEndpointSubnetsInput{
+			ClusterName: awsCluster.Name,
+			RoleARN:     roleArn,
+			Region:      awsCluster.Spec.Region,
+		})
 		if err != nil {
 			log.Error(err, "Failed to lookup subnets")
 			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, SubnetLookupFailed, capi.ConditionSeverityWarning, "Failed to lookup subnets to use for VPC Endpoints")

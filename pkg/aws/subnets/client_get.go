@@ -2,6 +2,7 @@ package subnets
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -181,8 +182,8 @@ func (c *client) GetEndpointSubnets(ctx context.Context, input GetEndpointSubnet
 	subnetIDs := []string{}
 	output, err := c.ec2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
 		Filters: []ec2Types.Filter{
-			{Name: aws.String(capa.NameKubernetesAWSCloudProviderPrefix + input.ClusterName), Values: []string{"owned", "shared"}},
-			{Name: aws.String("subnet.giantswarm.io/endpoints"), Values: []string{"true"}},
+			{Name: aws.String(fmt.Sprintf("tag:%s", capa.NameKubernetesAWSCloudProviderPrefix+input.ClusterName)), Values: []string{"owned", "shared"}},
+			{Name: aws.String("tag:subnet.giantswarm.io/endpoints"), Values: []string{"true"}},
 		},
 	}, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
 	if err != nil {

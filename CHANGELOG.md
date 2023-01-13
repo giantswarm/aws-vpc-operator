@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Added missing `tag` prefix to filters to ensure its using the AWS tags for filtering subnets
+
 ## [0.2.1] - 2023-01-13
 
 ### Fixed

@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/giantswarm/microerror"
+	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
@@ -168,4 +169,23 @@ func (c *client) Get(ctx context.Context, input GetSubnetsInput) (output GetSubn
 	}
 
 	return output, nil
+}
+
+func (c *client) GetEndpointSubnets(ctx context.Context, clusterName string) ([]string, error) {
+	subnetIDs := []string{}
+	output, err := c.ec2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
+		Filters: []ec2Types.Filter{
+			{Name: aws.String(capa.NameKubernetesAWSCloudProviderPrefix + clusterName), Values: []string{"owned", "shared"}},
+			{Name: aws.String("subnet.giantswarm.io/endpoints"), Values: []string{"true"}},
+		},
+	})
+	if err != nil {
+		return subnetIDs, err
+	}
+
+	for _, subnet := range output.Subnets {
+		subnetIDs = append(subnetIDs, *subnet.SubnetId)
+	}
+
+	return subnetIDs, nil
 }

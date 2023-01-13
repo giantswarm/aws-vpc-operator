@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Allow creation of VPC Endpoints when there are multiple subnets in the same AZ
+
+### Added
+
+- Support for the `subnet.giantswarm.io/endpoints: true` AWS Tag on subnets to control which subnets are used for the VPC Endpoints
+
 ## [0.1.2] - 2022-12-08
 
 ## [0.1.1] - 2022-12-07

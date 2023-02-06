@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Don't create VPC Endpoints if VPC Endpoint annotation is set to `UserManaged`
+
 ## [0.3.0] - 2023-01-30
 
 ### Changed

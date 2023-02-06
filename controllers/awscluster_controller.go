@@ -745,10 +745,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 }
 
 func shouldReconcileVpcEndpoint(annotations map[string]string) bool {
-	if annotations[VpcEndpointMode] != "UserManaged" {
-		return true
-	}
-	return false
+	return annotations[VpcEndpointMode] != "UserManaged"
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -57,6 +57,8 @@ const (
 	VpcEndpointReady              capi.ConditionType = "VpcEndpointReady"
 	ClusterSecurityGroupsNotReady string             = "ClusterSecurityGroupsNotReady"
 	SubnetLookupFailed            string             = "SubnetLookupFailed"
+
+	VpcEndpointMode string = "aws.giantswarm.io/vpc-endpoint-mode"
 )
 
 // AWSClusterReconciler reconciles a AWSCluster object
@@ -537,47 +539,48 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 				AdditionalTags: awsCluster.Spec.AdditionalTags,
 			},
 		}
-
-		subnetIDs, err := r.subnetsClient.GetEndpointSubnets(ctx, subnets.GetEndpointSubnetsInput{
-			ClusterName: awsCluster.Name,
-			RoleARN:     roleArn,
-			Region:      awsCluster.Spec.Region,
-		})
-		if err != nil {
-			log.Error(err, "Failed to lookup subnets")
-			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, SubnetLookupFailed, capi.ConditionSeverityWarning, "Failed to lookup subnets to use for VPC Endpoints")
-			return ctrl.Result{}, err
-		}
-		// If no specific subnets found we'll fallback to picking any from the cluster
-		if len(subnetIDs) == 0 {
-			log.Info("No specific subnets found for VPC endpoints, falling back to using subnets from AWSCluster spec")
-			selectedAZs := map[string]bool{}
-			for _, subnet := range awsCluster.Spec.NetworkSpec.Subnets {
-				if selectedAZs[subnet.AvailabilityZone] {
-					// VPC endpoints can only have a single subnet per AZ so we'll skip any additional
-					continue
-				}
-				subnetIDs = append(reconcileRequest.Spec.SubnetIds, subnet.ID)
-				selectedAZs[subnet.AvailabilityZone] = true
+		if shouldReconcileVpcEndpoint(awsCluster.Annotations) {
+			subnetIDs, err := r.subnetsClient.GetEndpointSubnets(ctx, subnets.GetEndpointSubnetsInput{
+				ClusterName: awsCluster.Name,
+				RoleARN:     roleArn,
+				Region:      awsCluster.Spec.Region,
+			})
+			if err != nil {
+				log.Error(err, "Failed to lookup subnets")
+				capiconditions.MarkFalse(awsCluster, VpcEndpointReady, SubnetLookupFailed, capi.ConditionSeverityWarning, "Failed to lookup subnets to use for VPC Endpoints")
+				return ctrl.Result{}, err
 			}
-		}
-		reconcileRequest.Spec.SubnetIds = subnetIDs
+			// If no specific subnets found we'll fallback to picking any from the cluster
+			if len(subnetIDs) == 0 {
+				log.Info("No specific subnets found for VPC endpoints, falling back to using subnets from AWSCluster spec")
+				selectedAZs := map[string]bool{}
+				for _, subnet := range awsCluster.Spec.NetworkSpec.Subnets {
+					if selectedAZs[subnet.AvailabilityZone] {
+						// VPC endpoints can only have a single subnet per AZ so we'll skip any additional
+						continue
+					}
+					subnetIDs = append(reconcileRequest.Spec.SubnetIds, subnet.ID)
+					selectedAZs[subnet.AvailabilityZone] = true
+				}
+			}
+			reconcileRequest.Spec.SubnetIds = subnetIDs
 
-		for _, securityGroup := range awsCluster.Status.Network.SecurityGroups {
-			reconcileRequest.Spec.SecurityGroupIds = append(reconcileRequest.Spec.SecurityGroupIds, securityGroup.ID)
-		}
-		result, err := r.vpcEndpointReconciler.Reconcile(ctx, reconcileRequest)
-		if err != nil {
-			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, "ReconciliationError", capi.ConditionSeverityError, "An error occurred during reconciliation, check logs")
-			return ctrl.Result{}, microerror.Mask(err)
-		}
+			for _, securityGroup := range awsCluster.Status.Network.SecurityGroups {
+				reconcileRequest.Spec.SecurityGroupIds = append(reconcileRequest.Spec.SecurityGroupIds, securityGroup.ID)
+			}
+			result, err := r.vpcEndpointReconciler.Reconcile(ctx, reconcileRequest)
+			if err != nil {
+				capiconditions.MarkFalse(awsCluster, VpcEndpointReady, "ReconciliationError", capi.ConditionSeverityError, "An error occurred during reconciliation, check logs")
+				return ctrl.Result{}, microerror.Mask(err)
+			}
 
-		if strings.EqualFold(result.Status.VpcEndpointState, vpcendpoint.StateAvailable) {
-			capiconditions.MarkTrue(awsCluster, VpcEndpointReady)
-		} else {
-			reason := fmt.Sprintf("VpcEndpointState%s", result.Status.VpcEndpointState)
-			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, reason, capi.ConditionSeverityWarning, "VPC endpoint is not available")
-			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+			if strings.EqualFold(result.Status.VpcEndpointState, vpcendpoint.StateAvailable) {
+				capiconditions.MarkTrue(awsCluster, VpcEndpointReady)
+			} else {
+				reason := fmt.Sprintf("VpcEndpointState%s", result.Status.VpcEndpointState)
+				capiconditions.MarkFalse(awsCluster, VpcEndpointReady, reason, capi.ConditionSeverityWarning, "VPC endpoint is not available")
+				return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+			}
 		}
 	}
 
@@ -589,28 +592,30 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	// Delete VPC endpoint. We delete VPC endpoint first, regardless of what CAPA
 	// deleted (if anything) until now.
 	//
-	if isDeleted(awsCluster, VpcEndpointReady) {
-		logger.Info("VPC endpoint is already deleted")
-	} else {
-		vpcId := awsCluster.Spec.NetworkSpec.VPC.ID
-		logger.Info("Deleting VPC endpoint", "vpc-id", vpcId)
-		vpcEndpointDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
-			Resource:    awsCluster,
-			ClusterName: awsCluster.Name,
-			CloudResourceRequest: aws.CloudResourceRequest[aws.DeletedCloudResourceSpec]{
-				RoleARN: roleArn,
-				Region:  awsCluster.Spec.Region,
-				Spec: aws.DeletedCloudResourceSpec{
-					Id: awsCluster.Spec.NetworkSpec.VPC.ID,
+	if shouldReconcileVpcEndpoint(awsCluster.Annotations) {
+		if isDeleted(awsCluster, VpcEndpointReady) {
+			logger.Info("VPC endpoint is already deleted")
+		} else {
+			vpcId := awsCluster.Spec.NetworkSpec.VPC.ID
+			logger.Info("Deleting VPC endpoint", "vpc-id", vpcId)
+			vpcEndpointDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
+				Resource:    awsCluster,
+				ClusterName: awsCluster.Name,
+				CloudResourceRequest: aws.CloudResourceRequest[aws.DeletedCloudResourceSpec]{
+					RoleARN: roleArn,
+					Region:  awsCluster.Spec.Region,
+					Spec: aws.DeletedCloudResourceSpec{
+						Id: awsCluster.Spec.NetworkSpec.VPC.ID,
+					},
 				},
-			},
+			}
+			err = r.vpcEndpointReconciler.ReconcileDelete(ctx, vpcEndpointDeleteRequest)
+			if err != nil {
+				return ctrl.Result{}, microerror.Mask(err)
+			}
+			conditions.MarkFalse(awsCluster, VpcEndpointReady, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC endpoint has been deleted")
+			logger.Info("Deleted VPC endpoint", "vpc-id", vpcId)
 		}
-		err = r.vpcEndpointReconciler.ReconcileDelete(ctx, vpcEndpointDeleteRequest)
-		if err != nil {
-			return ctrl.Result{}, microerror.Mask(err)
-		}
-		conditions.MarkFalse(awsCluster, VpcEndpointReady, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC endpoint has been deleted")
-		logger.Info("Deleted VPC endpoint", "vpc-id", vpcId)
 	}
 
 	//
@@ -737,6 +742,13 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	// Cluster is deleted so remove the finalizer.
 	controllerutil.RemoveFinalizer(awsCluster, AwsVpcOperatorFinalizer)
 	return ctrl.Result{}, nil
+}
+
+func shouldReconcileVpcEndpoint(annotations map[string]string) bool {
+	if annotations[VpcEndpointMode] != "UserManaged" {
+		return true
+	}
+	return false
 }
 
 // SetupWithManager sets up the controller with the Manager.

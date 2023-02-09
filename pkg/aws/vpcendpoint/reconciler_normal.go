@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/giantswarm/k8smetadata/pkg/annotation"
 	"github.com/giantswarm/microerror"
 	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
 	capaservices "sigs.k8s.io/cluster-api-provider-aws/pkg/cloud/services"
@@ -13,10 +14,6 @@ import (
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/tags"
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
-)
-
-const (
-	VpcEndpointMode string = "aws.giantswarm.io/vpc-endpoint-mode"
 )
 
 type Spec struct {
@@ -207,5 +204,5 @@ func diff(sortedS1, sortedS2 []string) []string {
 }
 
 func shouldReconcileVpcEndpoint(annotations map[string]string) bool {
-	return annotations[VpcEndpointMode] != "UserManaged"
+	return annotations[annotation.VPCEndpointModeAnnotation] != annotation.VPCEndpointModeUserManaged
 }

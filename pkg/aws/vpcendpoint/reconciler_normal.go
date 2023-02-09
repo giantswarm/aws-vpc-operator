@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/giantswarm/k8smetadata/pkg/annotation"
 	"github.com/giantswarm/microerror"
 	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
 	capaservices "sigs.k8s.io/cluster-api-provider-aws/pkg/cloud/services"
@@ -37,6 +38,13 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 			logger.Error(err, "Failed to reconcile VPC endpoint")
 		}
 	}()
+
+	if !shouldReconcileVpcEndpoint(request.Resource.GetAnnotations()) {
+		result.Status = Status{
+			VpcEndpointState: StateAvailable,
+		}
+		return result, nil
+	}
 
 	if request.ClusterName == "" {
 		return aws.ReconcileResult[Status]{}, microerror.Maskf(errors.InvalidConfigError, "ClusterName must not be empty")
@@ -193,4 +201,8 @@ func diff(sortedS1, sortedS2 []string) []string {
 	}
 
 	return result
+}
+
+func shouldReconcileVpcEndpoint(annotations map[string]string) bool {
+	return annotations[annotation.VPCEndpointModeAnnotation] != annotation.VPCEndpointModeUserManaged
 }

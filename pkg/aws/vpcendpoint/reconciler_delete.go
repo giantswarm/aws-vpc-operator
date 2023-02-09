@@ -21,6 +21,10 @@ func (r *reconciler) ReconcileDelete(ctx context.Context, request aws.ReconcileR
 		}
 	}()
 
+	if !shouldReconcileVpcEndpoint(request.Resource.GetAnnotations()) {
+		return nil
+	}
+
 	if request.ClusterName == "" {
 		return microerror.Maskf(errors.InvalidConfigError, "%T.ClusterName must not be empty", request)
 	}

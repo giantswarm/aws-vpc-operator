@@ -15,6 +15,10 @@ import (
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
+const (
+	VpcEndpointMode string = "aws.giantswarm.io/vpc-endpoint-mode"
+)
+
 type Spec struct {
 	VpcId            string
 	SubnetIds        []string
@@ -37,6 +41,13 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 			logger.Error(err, "Failed to reconcile VPC endpoint")
 		}
 	}()
+
+	if !shouldReconcileVpcEndpoint(request.Resource.GetAnnotations()) {
+		result.Status = Status{
+			VpcEndpointState: StateAvailable,
+		}
+		return result, nil
+	}
 
 	if request.ClusterName == "" {
 		return aws.ReconcileResult[Status]{}, microerror.Maskf(errors.InvalidConfigError, "ClusterName must not be empty")
@@ -193,4 +204,8 @@ func diff(sortedS1, sortedS2 []string) []string {
 	}
 
 	return result
+}
+
+func shouldReconcileVpcEndpoint(annotations map[string]string) bool {
+	return annotations[VpcEndpointMode] != "UserManaged"
 }

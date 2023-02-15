@@ -34,6 +34,8 @@ type BuildParams struct {
 // Copied from sigs.k8s.io/cluster-api-provider-aws.
 func (p BuildParams) Build() map[string]string {
 	tags := make(map[string]string)
+
+	// Add the name tag first so that it can be overwritten by a user-provided tag in the `Additional` tags.
 	if p.Name != "" {
 		tags["Name"] = p.Name
 	}

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Add the use of the runtime/default seccomp profile.
+
 ### Changed
 
 - Don't create VPC Endpoints if VPC Endpoint annotation is set to `UserManaged`

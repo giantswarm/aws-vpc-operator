@@ -34,6 +34,10 @@ type BuildParams struct {
 // Copied from sigs.k8s.io/cluster-api-provider-aws.
 func (p BuildParams) Build() map[string]string {
 	tags := make(map[string]string)
+	if p.Name != "" {
+		tags["Name"] = p.Name
+	}
+
 	for k, v := range p.Additional {
 		tags[k] = v
 	}
@@ -42,10 +46,6 @@ func (p BuildParams) Build() map[string]string {
 		tags[NameAWSRole] = p.Role
 	} else {
 		tags[NameAWSRole] = capa.CommonRoleTagValue
-	}
-
-	if p.Name != "" {
-		tags["Name"] = p.Name
 	}
 
 	tags[NameAWSProviderPrefix+p.ClusterName] = "owned"

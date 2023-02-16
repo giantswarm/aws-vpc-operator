@@ -616,30 +616,34 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	//
 	// Wait for CAPA to delete load balancer before we delete VPC, subnets and route tables.
 	//
-	if capiconditions.IsTrue(awsCluster, capa.LoadBalancerReadyCondition) ||
-		isBeingDeleted(awsCluster, capa.LoadBalancerReadyCondition) {
-		// load balancer deletion did not start, or it is in progress
-		logger.Info("Waiting for CAPA to delete load balancer, trying deletion again in a minute")
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	} else if deletionFailed(awsCluster, capa.LoadBalancerReadyCondition) {
-		logger.Info("CAPA failed to delete load balancer, trying deletion of route tables, subnets and VPC again in 15 minutes")
-		return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
-	}
-	logger.Info("CAPA deleted load balancer, proceeding with deletion")
+	if controllerutil.ContainsFinalizer(awsCluster, capa.ClusterFinalizer) {
+		if capiconditions.IsTrue(awsCluster, capa.LoadBalancerReadyCondition) ||
+			isBeingDeleted(awsCluster, capa.LoadBalancerReadyCondition) {
+			// load balancer deletion did not start, or it is in progress
+			logger.Info("Waiting for CAPA to delete load balancer, trying deletion again in a minute")
+			return ctrl.Result{RequeueAfter: time.Minute}, nil
+		} else if deletionFailed(awsCluster, capa.LoadBalancerReadyCondition) {
+			logger.Info("CAPA failed to delete load balancer, trying deletion of route tables, subnets and VPC again in 15 minutes")
+			return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
+		}
+		logger.Info("CAPA deleted load balancer, proceeding with deletion")
 
-	//
-	// Wait for CAPA to delete security groups before we delete VPC, subnets and route tables.
-	//
-	if capiconditions.IsTrue(awsCluster, capa.ClusterSecurityGroupsReadyCondition) ||
-		isBeingDeleted(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
-		// security groups deletion did not start, or it is in progress
-		logger.Info("Waiting for CAPA to delete security groups, trying deletion again in a minute")
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	} else if deletionFailed(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
-		logger.Info("CAPA failed to delete security groups, trying deletion of route tables, subnets and VPC again in 15 minutes")
-		return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
+		//
+		// Wait for CAPA to delete security groups before we delete VPC, subnets and route tables.
+		//
+		if capiconditions.IsTrue(awsCluster, capa.ClusterSecurityGroupsReadyCondition) ||
+			isBeingDeleted(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
+			// security groups deletion did not start, or it is in progress
+			logger.Info("Waiting for CAPA to delete security groups, trying deletion again in a minute")
+			return ctrl.Result{RequeueAfter: time.Minute}, nil
+		} else if deletionFailed(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
+			logger.Info("CAPA failed to delete security groups, trying deletion of route tables, subnets and VPC again in 15 minutes")
+			return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
+		}
+		logger.Info("CAPA deleted security groups, proceeding with deletion")
+	} else {
+		logger.Info("CAPA finalizer already gone, proceeding with deletion")
 	}
-	logger.Info("CAPA deleted security groups, proceeding with deletion")
 
 	//
 	// Delete route tables

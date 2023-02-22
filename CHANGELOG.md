@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Don't create VPC Endpoints if VPC Endpoint annotation is set to `UserManaged`
 - Do not generate a name if `Name` tag already given so that we can never confuse the values
+- Only wait for CAPA deletion of load balancer and security groups if its finalizer is still there
 
 ## [0.3.0] - 2023-01-30
 

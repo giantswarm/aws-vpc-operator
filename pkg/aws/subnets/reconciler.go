@@ -67,12 +67,18 @@ func (r *reconciler) getSubnetTags(clusterName string, clusterTags map[string]st
 	}
 
 	// 4. finally, build all tags with tag builder which also sets predefined/fixed tags
+
+	// Prefer `Name` tag if given, else generate a name
 	var name strings.Builder
-	name.WriteString(clusterName)
-	name.WriteString("-subnet-")
-	name.WriteString(role)
-	name.WriteString("-")
-	name.WriteString(spec.AvailabilityZone)
+	if manualTagName, ok := spec.Tags["Name"]; ok {
+		name.WriteString(manualTagName)
+	} else {
+		name.WriteString(clusterName)
+		name.WriteString("-subnet-")
+		name.WriteString(role)
+		name.WriteString("-")
+		name.WriteString(spec.AvailabilityZone)
+	}
 
 	id := spec.SubnetId
 	if id == "" {

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Don't unpause the cluster, because other controller will do it.
+
 ## [0.3.1] - 2023-02-27
 
 ### Added

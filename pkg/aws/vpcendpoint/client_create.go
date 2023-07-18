@@ -93,11 +93,8 @@ func (c *client) Create(ctx context.Context, input CreateVpcEndpointInput) (outp
 		// endpoint type gateway
 	} else if input.Type == ec2Types.VpcEndpointTypeGateway {
 		ec2Input = ec2.CreateVpcEndpointInput{
-			VpcId:       aws.String(input.VpcId),
-			ServiceName: aws.String(input.ServiceName),
-			DnsOptions: &ec2Types.DnsOptionsSpecification{
-				DnsRecordIpType: ec2Types.DnsRecordIpTypeIpv4,
-			},
+			VpcId:         aws.String(input.VpcId),
+			ServiceName:   aws.String(input.ServiceName),
 			RouteTableIds: input.VPCEndpointGatewayConfig.RouteTableIDs,
 			TagSpecifications: []ec2Types.TagSpecification{
 				tags.BuildParamsToTagSpecification(ec2Types.ResourceTypeVpcEndpoint, input.Tags),

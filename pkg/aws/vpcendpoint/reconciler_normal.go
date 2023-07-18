@@ -17,6 +17,11 @@ import (
 	"github.com/giantswarm/aws-vpc-operator/pkg/errors"
 )
 
+const (
+	S3         = "s3"
+	SecretData = "secretdata"
+)
+
 type Spec struct {
 	VpcId            string
 	SubnetIds        []string
@@ -90,7 +95,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 					SubnetIds:        request.Spec.SubnetIds,
 					SecurityGroupIds: request.Spec.SecurityGroupIds,
 				},
-				Tags: r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, "", request.Region, request.AdditionalTags),
+				Tags: r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, "", SecretData, request.Region, request.AdditionalTags),
 			}
 			createOutput, err := r.client.Create(ctx, createInput)
 			if err != nil {
@@ -138,7 +143,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 				},
 				Type:        ec2Types.VpcEndpointTypeInterface,
 				ServiceName: secretsManagerServiceName(request.Region),
-				Tags:        r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, getOutput.VpcEndpointId, request.Region, request.AdditionalTags),
+				Tags:        r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, getOutput.VpcEndpointId, SecretData, request.Region, request.AdditionalTags),
 			}
 
 			err = r.client.Update(ctx, updateInput)
@@ -174,7 +179,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 				VPCEndpointGatewayConfig: &VPCEndpointGatewayConfig{
 					RouteTableIDs: request.Spec.RouteTableIds,
 				},
-				Tags: r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, "", request.Region, request.AdditionalTags),
+				Tags: r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, "", S3, request.Region, request.AdditionalTags),
 			}
 			createOutput, err := r.client.Create(ctx, createInput)
 			if err != nil {
@@ -210,7 +215,7 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 				},
 				Type:        ec2Types.VpcEndpointTypeGateway,
 				ServiceName: s3ServiceName(request.Region),
-				Tags:        r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, getOutput.VpcEndpointId, request.Region, request.AdditionalTags),
+				Tags:        r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, getOutput.VpcEndpointId, S3, request.Region, request.AdditionalTags),
 			}
 
 			err = r.client.Update(ctx, updateInput)
@@ -228,12 +233,12 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 	return result, nil
 }
 
-func (r *reconciler) getVpcEndpointTags(clusterName, vpcId, vpcEndpointId, region string, additionalTags map[string]string) map[string]string {
+func (r *reconciler) getVpcEndpointTags(clusterName, vpcId, vpcEndpointId, vpcServiceName, region string, additionalTags map[string]string) map[string]string {
 	id := vpcEndpointId
 	if id == "" {
 		id = capaservices.TemporaryResourceID
 	}
-	name := fmt.Sprintf("%s-vpc-endpoint-secretsmanager-%s", clusterName, region)
+	name := fmt.Sprintf("%s-vpc-endpoint-%s-%s", clusterName, vpcServiceName, region)
 
 	allTags := map[string]string{}
 	for k, v := range additionalTags {

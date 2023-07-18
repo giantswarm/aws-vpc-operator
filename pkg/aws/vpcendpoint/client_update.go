@@ -63,7 +63,7 @@ func (c *client) Update(ctx context.Context, input UpdateVpcEndpointInput) (err 
 		return microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
 	if input.VPCEndpointGatewayConfig != nil && input.VPCEndpointInterfaceConfig != nil {
-		return microerror.Maskf(errors.InvalidConfigError, "%T.VPCEndpointGatewayConfig and %T.VPCEndpointInterfaceConfig cannot be set both at same time", input)
+		return microerror.Maskf(errors.InvalidConfigError, "%T.VPCEndpointGatewayConfig and %T.VPCEndpointInterfaceConfig cannot be set both at same time", input, input)
 	}
 
 	if input.Type == ec2Types.VpcEndpointTypeInterface {

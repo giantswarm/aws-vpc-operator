@@ -68,7 +68,7 @@ func (c *client) Create(ctx context.Context, input CreateVpcEndpointInput) (outp
 		return CreateVpcEndpointOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
 	if input.VPCEndpointGatewayConfig != nil && input.VPCEndpointInterfaceConfig != nil {
-		return CreateVpcEndpointOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VPCEndpointGatewayConfig and %T.VPCEndpointInterfaceConfig cannot be set both at same time", input)
+		return CreateVpcEndpointOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VPCEndpointGatewayConfig and %T.VPCEndpointInterfaceConfig cannot be set both at same time", input, input)
 	}
 
 	var ec2Input ec2.CreateVpcEndpointInput

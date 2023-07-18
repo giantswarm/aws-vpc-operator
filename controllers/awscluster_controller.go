@@ -56,6 +56,7 @@ const (
 	VpcEndpointReady              capi.ConditionType = "VpcEndpointReady"
 	ClusterSecurityGroupsNotReady string             = "ClusterSecurityGroupsNotReady"
 	SubnetLookupFailed            string             = "SubnetLookupFailed"
+	RouteTableLookupFailed        string             = "RouteTableLookupFailed"
 )
 
 // AWSClusterReconciler reconciles a AWSCluster object
@@ -67,6 +68,7 @@ type AWSClusterReconciler struct {
 	subnetsReconciler     subnets.Reconciler
 	subnetsClient         subnets.Client
 	routeTablesReconciler routetables.Reconciler
+	routeTablesClient     routetables.Client
 	vpcEndpointReconciler vpcendpoint.Reconciler
 }
 
@@ -117,6 +119,14 @@ func NewAWSClusterReconciler(
 		}
 	}
 
+	var routeTablesClient routetables.Client
+	{
+		routeTablesClient, err = routetables.NewClient(ec2Client, assumeRoleClient)
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+
+	}
 	var routeTablesReconciler routetables.Reconciler
 	{
 		routeTablesClient, err := routetables.NewClient(ec2Client, assumeRoleClient)
@@ -151,6 +161,7 @@ func NewAWSClusterReconciler(
 		subnetsReconciler:     subnetsReconciler,
 		subnetsClient:         subnetsClient,
 		routeTablesReconciler: routeTablesReconciler,
+		routeTablesClient:     routeTablesClient,
 		vpcEndpointReconciler: vpcEndpointReconciler,
 	}, nil
 }
@@ -545,6 +556,22 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 		for _, securityGroup := range awsCluster.Status.Network.SecurityGroups {
 			reconcileRequest.Spec.SecurityGroupIds = append(reconcileRequest.Spec.SecurityGroupIds, securityGroup.ID)
 		}
+
+		routeTablesListOutput, err := r.routeTablesClient.List(ctx, routetables.ListRouteTablesInput{
+			Region:  awsCluster.Spec.Region,
+			RoleARN: roleArn,
+			VpcId:   awsCluster.Spec.NetworkSpec.VPC.ID,
+		})
+		if err != nil {
+			log.Error(err, "Failed to lookup route tables")
+			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, SubnetLookupFailed, capi.ConditionSeverityWarning, "Failed to lookup route tables to use for VPC Endpoints")
+			return ctrl.Result{}, err
+		}
+
+		for _, rt := range routeTablesListOutput {
+			reconcileRequest.Spec.RouteTableIds = append(reconcileRequest.Spec.RouteTableIds, rt.RouteTableId)
+		}
+
 		result, err := r.vpcEndpointReconciler.Reconcile(ctx, reconcileRequest)
 		if err != nil {
 			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, "ReconciliationError", capi.ConditionSeverityError, "An error occurred during reconciliation, check logs")
@@ -566,6 +593,33 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, err error) {
 	//
 	// Delete VPC endpoint. We delete VPC endpoint first, regardless of what CAPA
+	// deleted (if anything) until now.
+	//
+	if isDeleted(awsCluster, VpcEndpointReady) {
+		logger.Info("VPC endpoint is already deleted")
+	} else {
+		vpcId := awsCluster.Spec.NetworkSpec.VPC.ID
+		logger.Info("Deleting VPC endpoint", "vpc-id", vpcId)
+		vpcEndpointDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
+			Resource:    awsCluster,
+			ClusterName: awsCluster.Name,
+			CloudResourceRequest: aws.CloudResourceRequest[aws.DeletedCloudResourceSpec]{
+				RoleARN: roleArn,
+				Region:  awsCluster.Spec.Region,
+				Spec: aws.DeletedCloudResourceSpec{
+					Id: awsCluster.Spec.NetworkSpec.VPC.ID,
+				},
+			},
+		}
+		err = r.vpcEndpointReconciler.ReconcileDelete(ctx, vpcEndpointDeleteRequest)
+		if err != nil {
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+		conditions.MarkFalse(awsCluster, VpcEndpointReady, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC endpoint has been deleted")
+		logger.Info("Deleted VPC endpoint", "vpc-id", vpcId)
+	}
+	//
+	// Delete VPC gateway endpoint. We delete VPC endpoint first, regardless of what CAPA
 	// deleted (if anything) until now.
 	//
 	if isDeleted(awsCluster, VpcEndpointReady) {

@@ -13,20 +13,23 @@ import (
 )
 
 type GetVpcEndpointInput struct {
-	RoleARN string
-	Region  string
-	VpcId   string
+	RoleARN     string
+	Region      string
+	ServiceName string
+	Type        ec2Types.VpcEndpointType
+	VpcId       string
 }
 
 type GetVpcEndpointOutput struct {
-	VpcEndpointId    string
-	VpcEndpointState string
-	SubnetIds        []string
-	SecurityGroupIds []string
+	VpcEndpointId              string
+	VpcEndpointState           string
+	Type                       ec2Types.VpcEndpointType
+	VPCEndpointInterfaceConfig *VPCEndpointInterfaceConfig
+	VPCEndpointGatewayConfig   *VPCEndpointGatewayConfig
 }
 
 func (c *client) Get(ctx context.Context, input GetVpcEndpointInput) (output GetVpcEndpointOutput, err error) {
-	logger := log.FromContext(ctx)
+	logger := log.FromContext(ctx).WithValues("vpc-endpoint-type", input.Type).WithValues("service-name", input.ServiceName)
 	logger.Info("Started getting VPC endpoint")
 	defer func() {
 		if err == nil {
@@ -42,6 +45,12 @@ func (c *client) Get(ctx context.Context, input GetVpcEndpointInput) (output Get
 	if input.Region == "" {
 		return GetVpcEndpointOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
 	}
+	if input.ServiceName == "" {
+		return GetVpcEndpointOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.ServiceName must not be empty", input)
+	}
+	if input.Type == "" {
+		return GetVpcEndpointOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.Type must not be empty", input)
+	}
 	if input.VpcId == "" {
 		return GetVpcEndpointOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
@@ -54,11 +63,11 @@ func (c *client) Get(ctx context.Context, input GetVpcEndpointInput) (output Get
 			},
 			{
 				Name:   aws.String("service-name"),
-				Values: []string{secretsManagerServiceName(input.Region)},
+				Values: []string{input.ServiceName},
 			},
 			{
 				Name:   aws.String("vpc-endpoint-type"),
-				Values: []string{string(ec2Types.VpcEndpointTypeInterface)},
+				Values: []string{string(input.Type)},
 			},
 		},
 	}
@@ -68,20 +77,36 @@ func (c *client) Get(ctx context.Context, input GetVpcEndpointInput) (output Get
 	}
 
 	if len(ec2Output.VpcEndpoints) == 0 {
-		return GetVpcEndpointOutput{}, microerror.Maskf(errors.VpcEndpointNotFoundError, "VPC Secrets Manager %s endpoint for VPC %s", ec2Types.VpcEndpointTypeInterface, input.VpcId)
+		return GetVpcEndpointOutput{}, microerror.Maskf(errors.VpcEndpointNotFoundError, "VPC %s endpoint %s for VPC %s not found", input.Type, input.ServiceName, input.VpcId)
 	}
 
-	output = GetVpcEndpointOutput{
-		VpcEndpointId:    *ec2Output.VpcEndpoints[0].VpcEndpointId,
-		VpcEndpointState: string(ec2Output.VpcEndpoints[0].State),
-		SubnetIds:        ec2Output.VpcEndpoints[0].SubnetIds,
-	}
-
-	for _, securityGroup := range ec2Output.VpcEndpoints[0].Groups {
-		if securityGroup.GroupId == nil {
-			continue
+	// endpoint type interface
+	if ec2Output.VpcEndpoints[0].VpcEndpointType == ec2Types.VpcEndpointTypeInterface {
+		output = GetVpcEndpointOutput{
+			VpcEndpointId:    *ec2Output.VpcEndpoints[0].VpcEndpointId,
+			VpcEndpointState: string(ec2Output.VpcEndpoints[0].State),
+			VPCEndpointInterfaceConfig: &VPCEndpointInterfaceConfig{
+				SubnetIds: ec2Output.VpcEndpoints[0].SubnetIds,
+			},
+			Type: ec2Output.VpcEndpoints[0].VpcEndpointType,
 		}
-		output.SecurityGroupIds = append(output.SecurityGroupIds, *securityGroup.GroupId)
+
+		for _, securityGroup := range ec2Output.VpcEndpoints[0].Groups {
+			if securityGroup.GroupId == nil {
+				continue
+			}
+			output.VPCEndpointInterfaceConfig.SecurityGroupIds = append(output.VPCEndpointInterfaceConfig.SecurityGroupIds, *securityGroup.GroupId)
+		}
+		// endpoint type gateway
+	} else if ec2Output.VpcEndpoints[0].VpcEndpointType == ec2Types.VpcEndpointTypeGateway {
+		output = GetVpcEndpointOutput{
+			VpcEndpointId:    *ec2Output.VpcEndpoints[0].VpcEndpointId,
+			VpcEndpointState: string(ec2Output.VpcEndpoints[0].State),
+			VPCEndpointGatewayConfig: &VPCEndpointGatewayConfig{
+				RouteTableIDs: ec2Output.VpcEndpoints[0].RouteTableIds,
+			},
+			Type: ec2Output.VpcEndpoints[0].VpcEndpointType,
+		}
 	}
 
 	return output, err

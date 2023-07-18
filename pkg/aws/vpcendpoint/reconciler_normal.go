@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/giantswarm/k8smetadata/pkg/annotation"
 	"github.com/giantswarm/microerror"
 	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
@@ -21,11 +22,14 @@ type Spec struct {
 	SubnetIds        []string
 	SecurityGroupIds []string
 	AdditionalTags   map[string]string
+	RouteTableIds    []string
 }
 
 type Status struct {
-	VpcEndpointId    string
-	VpcEndpointState string
+	VpcEndpointId          string
+	VpcEndpointState       string
+	VpcEndpointType        ec2Types.VpcEndpointType
+	VpcEndpointServiceName string
 }
 
 func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest[Spec]) (result aws.ReconcileResult[Status], err error) {
@@ -63,78 +67,163 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 		Status: Status{},
 	}
 
-	// Get existing VPC endpoint
-	getInput := GetVpcEndpointInput{
-		RoleARN: request.RoleARN,
-		Region:  request.Region,
-		VpcId:   request.Spec.VpcId,
-	}
-	getOutput, err := r.client.Get(ctx, getInput)
-	if errors.IsVpcEndpointNotFound(err) {
-		// VPC endpoint not found, so we create one
-		createInput := CreateVpcEndpointInput{
-			RoleARN:          request.RoleARN,
-			Region:           request.Region,
-			VpcId:            request.Spec.VpcId,
-			SubnetIds:        request.Spec.SubnetIds,
-			SecurityGroupIds: request.Spec.SecurityGroupIds,
-			Tags:             r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, "", request.Region, request.AdditionalTags),
+	// secretmanager interface endpoint
+	{
+		// Get existing VPC endpoint
+		getInput := GetVpcEndpointInput{
+			RoleARN:     request.RoleARN,
+			Region:      request.Region,
+			Type:        ec2Types.VpcEndpointTypeInterface,
+			ServiceName: secretsManagerServiceName(request.Region),
+			VpcId:       request.Spec.VpcId,
 		}
-		createOutput, err := r.client.Create(ctx, createInput)
-		if err != nil {
+		getOutput, err := r.client.Get(ctx, getInput)
+		if errors.IsVpcEndpointNotFound(err) {
+			// VPC endpoint not found, so we create one
+			createInput := CreateVpcEndpointInput{
+				RoleARN:     request.RoleARN,
+				Region:      request.Region,
+				Type:        ec2Types.VpcEndpointTypeInterface,
+				ServiceName: secretsManagerServiceName(request.Region),
+				VpcId:       request.Spec.VpcId,
+				VPCEndpointInterfaceConfig: &VPCEndpointInterfaceConfig{
+					SubnetIds:        request.Spec.SubnetIds,
+					SecurityGroupIds: request.Spec.SecurityGroupIds,
+				},
+				Tags: r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, "", request.Region, request.AdditionalTags),
+			}
+			createOutput, err := r.client.Create(ctx, createInput)
+			if err != nil {
+				return aws.ReconcileResult[Status]{}, microerror.Mask(err)
+			}
+
+			result.Status = Status(createOutput)
+		} else if err != nil {
 			return aws.ReconcileResult[Status]{}, microerror.Mask(err)
-		}
+		} else {
+			// Sort current securityGroupIds and subnetIds, so we can use sort.SearchStrings
+			// when checking difference in slices.
+			// This modifies slice in-place, but we just use it here anyway, so that's
+			// fine.
+			currentSecurityGroupIds := cloneAndSort(getOutput.VPCEndpointInterfaceConfig.SecurityGroupIds)
+			wantedSecurityGroupIds := cloneAndSort(request.Spec.SecurityGroupIds)
+			currentSubnetIds := cloneAndSort(getOutput.VPCEndpointInterfaceConfig.SubnetIds)
+			wantedSubnetIds := cloneAndSort(request.Spec.SubnetIds)
 
-		result.Status = Status(createOutput)
-		return result, nil
-	} else if err != nil {
-		return aws.ReconcileResult[Status]{}, microerror.Mask(err)
-	} else {
-		// Sort current securityGroupIds and subnetIds, so we can use sort.SearchStrings
-		// when checking difference in slices.
-		// This modifies slice in-place, but we just use it here anyway, so that's
-		// fine.
-		currentSecurityGroupIds := cloneAndSort(getOutput.SecurityGroupIds)
-		wantedSecurityGroupIds := cloneAndSort(request.Spec.SecurityGroupIds)
-		currentSubnetIds := cloneAndSort(getOutput.SubnetIds)
-		wantedSubnetIds := cloneAndSort(request.Spec.SubnetIds)
+			// securityGroupIDs that we will add, those specified in the input, but not
+			// already present in current state
+			securityGroupIdsToBeAdded := diff(wantedSecurityGroupIds, currentSecurityGroupIds)
 
-		// securityGroupIDs that we will add, those specified in the input, but not
-		// already present in current state
-		securityGroupIdsToBeAdded := diff(wantedSecurityGroupIds, currentSecurityGroupIds)
+			// securityGroupIDs that we will remove, those already in the current state,
+			// but not present in the input
+			securityGroupIdsToBeRemoved := diff(currentSecurityGroupIds, wantedSecurityGroupIds)
 
-		// securityGroupIDs that we will remove, those already in the current state,
-		// but not present in the input
-		securityGroupIdsToBeRemoved := diff(currentSecurityGroupIds, wantedSecurityGroupIds)
+			// subnets that we will add, those specified in the input, but not already
+			// present in current state
+			subnetIdsToBeAdded := diff(wantedSubnetIds, currentSubnetIds)
 
-		// subnets that we will add, those specified in the input, but not already
-		// present in current state
-		subnetIdsToBeAdded := diff(wantedSubnetIds, currentSubnetIds)
+			// subnets that we will remove, those already in the current state, but not
+			// present in the input
+			subnetIdsToBeRemoved := diff(currentSubnetIds, wantedSubnetIds)
 
-		// subnets that we will remove, those already in the current state, but not
-		// present in the input
-		subnetIdsToBeRemoved := diff(currentSubnetIds, wantedSubnetIds)
+			updateInput := UpdateVpcEndpointInput{
+				RoleARN:       request.RoleARN,
+				Region:        request.Region,
+				VpcEndpointId: getOutput.VpcEndpointId,
+				VPCEndpointInterfaceConfig: &VPCEndpointInterfaceUpdateConfig{
+					AddSecurityGroupIds:    securityGroupIdsToBeAdded,
+					AddSubnetIds:           subnetIdsToBeAdded,
+					RemoveSecurityGroupIds: securityGroupIdsToBeRemoved,
+					RemoveSubnetIds:        subnetIdsToBeRemoved,
+				},
+				Type:        ec2Types.VpcEndpointTypeInterface,
+				ServiceName: secretsManagerServiceName(request.Region),
+				Tags:        r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, getOutput.VpcEndpointId, request.Region, request.AdditionalTags),
+			}
 
-		updateInput := UpdateVpcEndpointInput{
-			RoleARN:                request.RoleARN,
-			Region:                 request.Region,
-			VpcEndpointId:          getOutput.VpcEndpointId,
-			AddSecurityGroupIds:    securityGroupIdsToBeAdded,
-			AddSubnetIds:           subnetIdsToBeAdded,
-			RemoveSecurityGroupIds: securityGroupIdsToBeRemoved,
-			RemoveSubnetIds:        subnetIdsToBeRemoved,
-			Tags:                   r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, getOutput.VpcEndpointId, request.Region, request.AdditionalTags),
-		}
-
-		err = r.client.Update(ctx, updateInput)
-		if err != nil {
-			return aws.ReconcileResult[Status]{}, microerror.Mask(err)
+			err = r.client.Update(ctx, updateInput)
+			if err != nil {
+				return aws.ReconcileResult[Status]{}, microerror.Mask(err)
+			}
+			result.Status = Status{
+				VpcEndpointId:    getOutput.VpcEndpointId,
+				VpcEndpointState: getOutput.VpcEndpointState,
+			}
 		}
 	}
 
-	result.Status = Status{
-		VpcEndpointId:    getOutput.VpcEndpointId,
-		VpcEndpointState: getOutput.VpcEndpointState,
+	// s3 gateway endpoint
+	{
+		// Get existing VPC endpoint
+		getInput := GetVpcEndpointInput{
+			RoleARN:     request.RoleARN,
+			Region:      request.Region,
+			Type:        ec2Types.VpcEndpointTypeGateway,
+			ServiceName: s3ServiceName(request.Region),
+			VpcId:       request.Spec.VpcId,
+		}
+		getOutput, err := r.client.Get(ctx, getInput)
+		if errors.IsVpcEndpointNotFound(err) {
+			// VPC endpoint not found, so we create one
+			createInput := CreateVpcEndpointInput{
+				RoleARN:     request.RoleARN,
+				Region:      request.Region,
+				Type:        ec2Types.VpcEndpointTypeGateway,
+				ServiceName: s3ServiceName(request.Region),
+				VpcId:       request.Spec.VpcId,
+				VPCEndpointGatewayConfig: &VPCEndpointGatewayConfig{
+					RouteTableIDs: request.Spec.RouteTableIds,
+				},
+				Tags: r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, "", request.Region, request.AdditionalTags),
+			}
+			createOutput, err := r.client.Create(ctx, createInput)
+			if err != nil {
+				return aws.ReconcileResult[Status]{}, microerror.Mask(err)
+			}
+
+			result.Status = Status(createOutput)
+		} else if err != nil {
+			return aws.ReconcileResult[Status]{}, microerror.Mask(err)
+		} else {
+			// Sort current routeTablesID, so we can use sort.SearchStrings
+			// when checking difference in slices.
+			// This modifies slice in-place, but we just use it here anyway, so that's
+			// fine.
+			currentRouteTableIds := cloneAndSort(getOutput.VPCEndpointGatewayConfig.RouteTableIDs)
+			wantedRouteTableIds := cloneAndSort(request.Spec.RouteTableIds)
+
+			// securityGroupIDs that we will add, those specified in the input, but not
+			// already present in current state
+			routeTableIdsToBeAdded := diff(wantedRouteTableIds, currentRouteTableIds)
+
+			// securityGroupIDs that we will remove, those already in the current state,
+			// but not present in the input
+			routeTableIdsToBeRemoved := diff(currentRouteTableIds, wantedRouteTableIds)
+
+			updateInput := UpdateVpcEndpointInput{
+				RoleARN:       request.RoleARN,
+				Region:        request.Region,
+				VpcEndpointId: getOutput.VpcEndpointId,
+				VPCEndpointGatewayConfig: &VPCEndpointGatewayUpdateConfig{
+					AddRouteTableIDs:    routeTableIdsToBeAdded,
+					RemoveRouteTableIDs: routeTableIdsToBeRemoved,
+				},
+				Type:        ec2Types.VpcEndpointTypeGateway,
+				ServiceName: s3ServiceName(request.Region),
+				Tags:        r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, getOutput.VpcEndpointId, request.Region, request.AdditionalTags),
+			}
+
+			err = r.client.Update(ctx, updateInput)
+			if err != nil {
+				return aws.ReconcileResult[Status]{}, microerror.Mask(err)
+			}
+			result.Status = Status{
+				VpcEndpointId:          getOutput.VpcEndpointId,
+				VpcEndpointState:       getOutput.VpcEndpointState,
+				VpcEndpointServiceName: s3ServiceName(request.Region),
+				VpcEndpointType:        ec2Types.VpcEndpointTypeGateway,
+			}
+		}
 	}
 	return result, nil
 }

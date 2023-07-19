@@ -39,25 +39,22 @@ func (r *reconciler) ReconcileDelete(ctx context.Context, request aws.ReconcileR
 		return microerror.Maskf(errors.InvalidConfigError, "%T.Spec.Id must not be empty", request)
 	}
 
-	// s3 endpoint
-	{
-		input := DeleteVpcEndpointInput{
-			RoleARN:     request.RoleARN,
-			Region:      request.Region,
-			VpcId:       request.Spec.Id,
-			Type:        ec2Types.VpcEndpointTypeGateway,
-			ServiceName: s3ServiceName(request.Region),
-		}
-		err = r.client.Delete(ctx, input)
-		if errors.IsVpcEndpointNotFound(err) {
-			logger.Info("Nothing to delete, VPC endpoint not found")
-		} else if errors.IsResourceAlreadyDeleted(err) {
-			logger.Info("Nothing to delete, VPC endpoint already deleted")
-		} else if errors.IsResourceDeletionInProgress(err) {
-			logger.Info("VPC endpoint deletion is already in progress")
-		} else if err != nil {
-			return microerror.Mask(err)
-		}
+	input := DeleteVpcEndpointInput{
+		RoleARN:     request.RoleARN,
+		Region:      request.Region,
+		VpcId:       request.Spec.Id,
+		Type:        ec2Types.VpcEndpointTypeGateway,
+		ServiceName: s3ServiceName(request.Region),
+	}
+	err = r.client.Delete(ctx, input)
+	if errors.IsVpcEndpointNotFound(err) {
+		logger.Info("Nothing to delete, VPC endpoint not found")
+	} else if errors.IsResourceAlreadyDeleted(err) {
+		logger.Info("Nothing to delete, VPC endpoint already deleted")
+	} else if errors.IsResourceDeletionInProgress(err) {
+		logger.Info("VPC endpoint deletion is already in progress")
+	} else if err != nil {
+		return microerror.Mask(err)
 	}
 
 	return nil

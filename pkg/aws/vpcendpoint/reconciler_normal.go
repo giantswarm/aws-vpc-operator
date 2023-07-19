@@ -70,77 +70,75 @@ func (r *reconciler) Reconcile(ctx context.Context, request aws.ReconcileRequest
 		Status: Status{},
 	}
 
-	// s3 gateway endpoint
-	{
-		// Get existing VPC endpoint
-		getInput := GetVpcEndpointInput{
+	// Get existing VPC endpoint
+	getInput := GetVpcEndpointInput{
+		RoleARN:     request.RoleARN,
+		Region:      request.Region,
+		Type:        ec2Types.VpcEndpointTypeGateway,
+		ServiceName: s3ServiceName(request.Region),
+		VpcId:       request.Spec.VpcId,
+	}
+	getOutput, err := r.client.Get(ctx, getInput)
+	if errors.IsVpcEndpointNotFound(err) {
+		// VPC endpoint not found, so we create one
+		createInput := CreateVpcEndpointInput{
 			RoleARN:     request.RoleARN,
 			Region:      request.Region,
 			Type:        ec2Types.VpcEndpointTypeGateway,
 			ServiceName: s3ServiceName(request.Region),
 			VpcId:       request.Spec.VpcId,
+			VPCEndpointGatewayConfig: &VPCEndpointGatewayConfig{
+				RouteTableIDs: request.Spec.RouteTableIds,
+			},
+			Tags: r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, "", S3, request.Region, request.AdditionalTags),
 		}
-		getOutput, err := r.client.Get(ctx, getInput)
-		if errors.IsVpcEndpointNotFound(err) {
-			// VPC endpoint not found, so we create one
-			createInput := CreateVpcEndpointInput{
-				RoleARN:     request.RoleARN,
-				Region:      request.Region,
-				Type:        ec2Types.VpcEndpointTypeGateway,
-				ServiceName: s3ServiceName(request.Region),
-				VpcId:       request.Spec.VpcId,
-				VPCEndpointGatewayConfig: &VPCEndpointGatewayConfig{
-					RouteTableIDs: request.Spec.RouteTableIds,
-				},
-				Tags: r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, "", S3, request.Region, request.AdditionalTags),
-			}
-			createOutput, err := r.client.Create(ctx, createInput)
-			if err != nil {
-				return aws.ReconcileResult[Status]{}, microerror.Mask(err)
-			}
-
-			result.Status = Status(createOutput)
-		} else if err != nil {
+		createOutput, err := r.client.Create(ctx, createInput)
+		if err != nil {
 			return aws.ReconcileResult[Status]{}, microerror.Mask(err)
-		} else {
-			// Sort current routeTablesID, so we can use sort.SearchStrings
-			// when checking difference in slices.
-			// This modifies slice in-place, but we just use it here anyway, so that's
-			// fine.
-			currentRouteTableIds := cloneAndSort(getOutput.VPCEndpointGatewayConfig.RouteTableIDs)
-			wantedRouteTableIds := cloneAndSort(request.Spec.RouteTableIds)
+		}
 
-			// securityGroupIDs that we will add, those specified in the input, but not
-			// already present in current state
-			routeTableIdsToBeAdded := diff(wantedRouteTableIds, currentRouteTableIds)
+		result.Status = Status(createOutput)
+	} else if err != nil {
+		return aws.ReconcileResult[Status]{}, microerror.Mask(err)
+	} else {
+		// Sort current routeTablesID, so we can use sort.SearchStrings
+		// when checking difference in slices.
+		// This modifies slice in-place, but we just use it here anyway, so that's
+		// fine.
+		currentRouteTableIds := cloneAndSort(getOutput.VPCEndpointGatewayConfig.RouteTableIDs)
+		wantedRouteTableIds := cloneAndSort(request.Spec.RouteTableIds)
 
-			// securityGroupIDs that we will remove, those already in the current state,
-			// but not present in the input
-			routeTableIdsToBeRemoved := diff(currentRouteTableIds, wantedRouteTableIds)
+		// securityGroupIDs that we will add, those specified in the input, but not
+		// already present in current state
+		routeTableIdsToBeAdded := diff(wantedRouteTableIds, currentRouteTableIds)
 
-			updateInput := UpdateVpcEndpointInput{
-				RoleARN:       request.RoleARN,
-				Region:        request.Region,
-				VpcEndpointId: getOutput.VpcEndpointId,
-				VPCEndpointGatewayConfig: &VPCEndpointGatewayUpdateConfig{
-					AddRouteTableIDs:    routeTableIdsToBeAdded,
-					RemoveRouteTableIDs: routeTableIdsToBeRemoved,
-				},
-				Type:        ec2Types.VpcEndpointTypeGateway,
-				ServiceName: s3ServiceName(request.Region),
-				Tags:        r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, getOutput.VpcEndpointId, S3, request.Region, request.AdditionalTags),
-			}
+		// securityGroupIDs that we will remove, those already in the current state,
+		// but not present in the input
+		routeTableIdsToBeRemoved := diff(currentRouteTableIds, wantedRouteTableIds)
 
-			err = r.client.Update(ctx, updateInput)
-			if err != nil {
-				return aws.ReconcileResult[Status]{}, microerror.Mask(err)
-			}
-			result.Status = Status{
-				VpcEndpointId:    getOutput.VpcEndpointId,
-				VpcEndpointState: getOutput.VpcEndpointState,
-			}
+		updateInput := UpdateVpcEndpointInput{
+			RoleARN:       request.RoleARN,
+			Region:        request.Region,
+			VpcEndpointId: getOutput.VpcEndpointId,
+			VPCEndpointGatewayConfig: &VPCEndpointGatewayUpdateConfig{
+				AddRouteTableIDs:    routeTableIdsToBeAdded,
+				RemoveRouteTableIDs: routeTableIdsToBeRemoved,
+			},
+			Type:        ec2Types.VpcEndpointTypeGateway,
+			ServiceName: s3ServiceName(request.Region),
+			Tags:        r.getVpcEndpointTags(request.ClusterName, request.Spec.VpcId, getOutput.VpcEndpointId, S3, request.Region, request.AdditionalTags),
+		}
+
+		err = r.client.Update(ctx, updateInput)
+		if err != nil {
+			return aws.ReconcileResult[Status]{}, microerror.Mask(err)
+		}
+		result.Status = Status{
+			VpcEndpointId:    getOutput.VpcEndpointId,
+			VpcEndpointState: getOutput.VpcEndpointState,
 		}
 	}
+
 	return result, nil
 }
 

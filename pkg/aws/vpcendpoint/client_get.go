@@ -21,11 +21,10 @@ type GetVpcEndpointInput struct {
 }
 
 type GetVpcEndpointOutput struct {
-	VpcEndpointId              string
-	VpcEndpointState           string
-	Type                       ec2Types.VpcEndpointType
-	VPCEndpointInterfaceConfig *VPCEndpointInterfaceConfig
-	VPCEndpointGatewayConfig   *VPCEndpointGatewayConfig
+	VpcEndpointId            string
+	VpcEndpointState         string
+	Type                     ec2Types.VpcEndpointType
+	VPCEndpointGatewayConfig *VPCEndpointGatewayConfig
 }
 
 func (c *client) Get(ctx context.Context, input GetVpcEndpointInput) (output GetVpcEndpointOutput, err error) {
@@ -80,33 +79,13 @@ func (c *client) Get(ctx context.Context, input GetVpcEndpointInput) (output Get
 		return GetVpcEndpointOutput{}, microerror.Maskf(errors.VpcEndpointNotFoundError, "VPC %s endpoint %s for VPC %s not found", input.Type, input.ServiceName, input.VpcId)
 	}
 
-	// endpoint type interface
-	if ec2Output.VpcEndpoints[0].VpcEndpointType == ec2Types.VpcEndpointTypeInterface {
-		output = GetVpcEndpointOutput{
-			VpcEndpointId:    *ec2Output.VpcEndpoints[0].VpcEndpointId,
-			VpcEndpointState: string(ec2Output.VpcEndpoints[0].State),
-			VPCEndpointInterfaceConfig: &VPCEndpointInterfaceConfig{
-				SubnetIds: ec2Output.VpcEndpoints[0].SubnetIds,
-			},
-			Type: ec2Output.VpcEndpoints[0].VpcEndpointType,
-		}
-
-		for _, securityGroup := range ec2Output.VpcEndpoints[0].Groups {
-			if securityGroup.GroupId == nil {
-				continue
-			}
-			output.VPCEndpointInterfaceConfig.SecurityGroupIds = append(output.VPCEndpointInterfaceConfig.SecurityGroupIds, *securityGroup.GroupId)
-		}
-		// endpoint type gateway
-	} else if ec2Output.VpcEndpoints[0].VpcEndpointType == ec2Types.VpcEndpointTypeGateway {
-		output = GetVpcEndpointOutput{
-			VpcEndpointId:    *ec2Output.VpcEndpoints[0].VpcEndpointId,
-			VpcEndpointState: string(ec2Output.VpcEndpoints[0].State),
-			VPCEndpointGatewayConfig: &VPCEndpointGatewayConfig{
-				RouteTableIDs: ec2Output.VpcEndpoints[0].RouteTableIds,
-			},
-			Type: ec2Output.VpcEndpoints[0].VpcEndpointType,
-		}
+	output = GetVpcEndpointOutput{
+		VpcEndpointId:    *ec2Output.VpcEndpoints[0].VpcEndpointId,
+		VpcEndpointState: string(ec2Output.VpcEndpoints[0].State),
+		VPCEndpointGatewayConfig: &VPCEndpointGatewayConfig{
+			RouteTableIDs: ec2Output.VpcEndpoints[0].RouteTableIds,
+		},
+		Type: ec2Output.VpcEndpoints[0].VpcEndpointType,
 	}
 
 	return output, err

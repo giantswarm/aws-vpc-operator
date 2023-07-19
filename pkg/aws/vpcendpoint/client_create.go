@@ -21,13 +21,7 @@ type CreateVpcEndpointInput struct {
 	Type        ec2Types.VpcEndpointType
 	VpcId       string
 
-	VPCEndpointInterfaceConfig *VPCEndpointInterfaceConfig
-	VPCEndpointGatewayConfig   *VPCEndpointGatewayConfig
-}
-
-type VPCEndpointInterfaceConfig struct {
-	SubnetIds        []string
-	SecurityGroupIds []string
+	VPCEndpointGatewayConfig *VPCEndpointGatewayConfig
 }
 
 type VPCEndpointGatewayConfig struct {
@@ -35,10 +29,8 @@ type VPCEndpointGatewayConfig struct {
 }
 
 type CreateVpcEndpointOutput struct {
-	VpcEndpointId          string
-	VpcEndpointState       string
-	VpcEndpointType        ec2Types.VpcEndpointType
-	VpcEndpointServiceName string
+	VpcEndpointId    string
+	VpcEndpointState string
 }
 
 func (c *client) Create(ctx context.Context, input CreateVpcEndpointInput) (output CreateVpcEndpointOutput, err error) {
@@ -67,44 +59,20 @@ func (c *client) Create(ctx context.Context, input CreateVpcEndpointInput) (outp
 	if input.VpcId == "" {
 		return CreateVpcEndpointOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
-	if input.VPCEndpointGatewayConfig != nil && input.VPCEndpointInterfaceConfig != nil {
-		return CreateVpcEndpointOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VPCEndpointGatewayConfig and %T.VPCEndpointInterfaceConfig cannot be set both at same time", input, input)
+	if input.VPCEndpointGatewayConfig == nil {
+		return CreateVpcEndpointOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VPCEndpointGatewayConfig cannot be nil", input)
 	}
 
 	var ec2Input ec2.CreateVpcEndpointInput
 
-	// endpoint type interface
-	if input.Type == ec2Types.VpcEndpointTypeInterface {
-		ec2Input = ec2.CreateVpcEndpointInput{
-			VpcId:       aws.String(input.VpcId),
-			ServiceName: aws.String(input.ServiceName),
-			DnsOptions: &ec2Types.DnsOptionsSpecification{
-				DnsRecordIpType: ec2Types.DnsRecordIpTypeIpv4,
-			},
-			IpAddressType:     ec2Types.IpAddressTypeIpv4,
-			PrivateDnsEnabled: aws.Bool(true),
-			SecurityGroupIds:  input.VPCEndpointInterfaceConfig.SecurityGroupIds,
-			SubnetIds:         input.VPCEndpointInterfaceConfig.SubnetIds,
-			TagSpecifications: []ec2Types.TagSpecification{
-				tags.BuildParamsToTagSpecification(ec2Types.ResourceTypeVpcEndpoint, input.Tags),
-			},
-			VpcEndpointType: input.Type,
-		}
-		// endpoint type gateway
-	} else if input.Type == ec2Types.VpcEndpointTypeGateway {
-		ec2Input = ec2.CreateVpcEndpointInput{
-			VpcId:         aws.String(input.VpcId),
-			ServiceName:   aws.String(input.ServiceName),
-			RouteTableIds: input.VPCEndpointGatewayConfig.RouteTableIDs,
-			TagSpecifications: []ec2Types.TagSpecification{
-				tags.BuildParamsToTagSpecification(ec2Types.ResourceTypeVpcEndpoint, input.Tags),
-			},
-			VpcEndpointType: input.Type,
-		}
-		// unknown endpoint type
-	} else {
-		return CreateVpcEndpointOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.Type value is unknown '%s', valid options are Interface or Gateway", input, input.Type)
-
+	ec2Input = ec2.CreateVpcEndpointInput{
+		VpcId:         aws.String(input.VpcId),
+		ServiceName:   aws.String(input.ServiceName),
+		RouteTableIds: input.VPCEndpointGatewayConfig.RouteTableIDs,
+		TagSpecifications: []ec2Types.TagSpecification{
+			tags.BuildParamsToTagSpecification(ec2Types.ResourceTypeVpcEndpoint, input.Tags),
+		},
+		VpcEndpointType: input.Type,
 	}
 
 	ec2Output, err := c.ec2Client.CreateVpcEndpoint(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
@@ -113,10 +81,8 @@ func (c *client) Create(ctx context.Context, input CreateVpcEndpointInput) (outp
 	}
 
 	output = CreateVpcEndpointOutput{
-		VpcEndpointId:          *ec2Output.VpcEndpoint.VpcEndpointId,
-		VpcEndpointServiceName: input.ServiceName,
-		VpcEndpointType:        input.Type,
-		VpcEndpointState:       string(ec2Output.VpcEndpoint.State),
+		VpcEndpointId:    *ec2Output.VpcEndpoint.VpcEndpointId,
+		VpcEndpointState: string(ec2Output.VpcEndpoint.State),
 	}
 
 	return output, err

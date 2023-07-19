@@ -618,33 +618,6 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 		conditions.MarkFalse(awsCluster, VpcEndpointReady, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC endpoint has been deleted")
 		logger.Info("Deleted VPC endpoint", "vpc-id", vpcId)
 	}
-	//
-	// Delete VPC gateway endpoint. We delete VPC endpoint first, regardless of what CAPA
-	// deleted (if anything) until now.
-	//
-	if isDeleted(awsCluster, VpcEndpointReady) {
-		logger.Info("VPC endpoint is already deleted")
-	} else {
-		vpcId := awsCluster.Spec.NetworkSpec.VPC.ID
-		logger.Info("Deleting VPC endpoint", "vpc-id", vpcId)
-		vpcEndpointDeleteRequest := aws.ReconcileRequest[aws.DeletedCloudResourceSpec]{
-			Resource:    awsCluster,
-			ClusterName: awsCluster.Name,
-			CloudResourceRequest: aws.CloudResourceRequest[aws.DeletedCloudResourceSpec]{
-				RoleARN: roleArn,
-				Region:  awsCluster.Spec.Region,
-				Spec: aws.DeletedCloudResourceSpec{
-					Id: awsCluster.Spec.NetworkSpec.VPC.ID,
-				},
-			},
-		}
-		err = r.vpcEndpointReconciler.ReconcileDelete(ctx, vpcEndpointDeleteRequest)
-		if err != nil {
-			return ctrl.Result{}, microerror.Mask(err)
-		}
-		conditions.MarkFalse(awsCluster, VpcEndpointReady, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC endpoint has been deleted")
-		logger.Info("Deleted VPC endpoint", "vpc-id", vpcId)
-	}
 
 	//
 	// Wait for CAPA to delete load balancer before we delete VPC, subnets and route tables.

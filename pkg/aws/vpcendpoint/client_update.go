@@ -55,7 +55,7 @@ func (c *client) Update(ctx context.Context, input UpdateVpcEndpointInput) (err 
 		return microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
 	if input.VPCEndpointGatewayConfig == nil {
-		return microerror.Maskf(errors.InvalidConfigError, "%T.VPCEndpointGatewayConfig cannot be nil", input, input)
+		return microerror.Maskf(errors.InvalidConfigError, "%T.VPCEndpointGatewayConfig cannot be nil", input)
 	}
 
 	if atLeastOneIsNotEmpty(input.VPCEndpointGatewayConfig.AddRouteTableIDs, input.VPCEndpointGatewayConfig.RemoveRouteTableIDs) {

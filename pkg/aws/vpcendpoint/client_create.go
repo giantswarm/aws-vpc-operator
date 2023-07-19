@@ -63,9 +63,7 @@ func (c *client) Create(ctx context.Context, input CreateVpcEndpointInput) (outp
 		return CreateVpcEndpointOutput{}, microerror.Maskf(errors.InvalidConfigError, "%T.VPCEndpointGatewayConfig cannot be nil", input)
 	}
 
-	var ec2Input ec2.CreateVpcEndpointInput
-
-	ec2Input = ec2.CreateVpcEndpointInput{
+	ec2Input := ec2.CreateVpcEndpointInput{
 		VpcId:         aws.String(input.VpcId),
 		ServiceName:   aws.String(input.ServiceName),
 		RouteTableIds: input.VPCEndpointGatewayConfig.RouteTableIDs,

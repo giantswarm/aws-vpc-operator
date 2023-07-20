@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/giantswarm/microerror"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -11,13 +12,15 @@ import (
 )
 
 type DeleteVpcEndpointInput struct {
-	RoleARN string
-	Region  string
-	VpcId   string
+	RoleARN     string
+	Region      string
+	ServiceName string
+	Type        ec2Types.VpcEndpointType
+	VpcId       string
 }
 
 func (c *client) Delete(ctx context.Context, input DeleteVpcEndpointInput) (err error) {
-	logger := log.FromContext(ctx)
+	logger := log.FromContext(ctx).WithValues("vpc-endpoint-type", input.Type).WithValues("service-name", input.ServiceName)
 	logger.Info("Started deleting VPC endpoint", "vpc-id", input.VpcId)
 	defer func() {
 		if err == nil {
@@ -32,6 +35,12 @@ func (c *client) Delete(ctx context.Context, input DeleteVpcEndpointInput) (err 
 	}
 	if input.Region == "" {
 		return microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
+	}
+	if input.ServiceName == "" {
+		return microerror.Maskf(errors.InvalidConfigError, "%T.ServiceName must not be empty", input)
+	}
+	if input.Type == "" {
+		return microerror.Maskf(errors.InvalidConfigError, "%T.Type must not be empty", input)
 	}
 	if input.VpcId == "" {
 		return microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)

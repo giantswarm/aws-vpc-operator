@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/giantswarm/microerror"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -13,18 +14,22 @@ import (
 )
 
 type UpdateVpcEndpointInput struct {
-	RoleARN                string
-	Region                 string
-	VpcEndpointId          string
-	AddSecurityGroupIds    []string
-	AddSubnetIds           []string
-	RemoveSecurityGroupIds []string
-	RemoveSubnetIds        []string
-	Tags                   map[string]string
+	RoleARN                  string
+	Region                   string
+	Type                     ec2Types.VpcEndpointType
+	ServiceName              string
+	VpcEndpointId            string
+	VPCEndpointGatewayConfig *VPCEndpointGatewayUpdateConfig
+	Tags                     map[string]string
+}
+
+type VPCEndpointGatewayUpdateConfig struct {
+	AddRouteTableIDs    []string
+	RemoveRouteTableIDs []string
 }
 
 func (c *client) Update(ctx context.Context, input UpdateVpcEndpointInput) (err error) {
-	logger := log.FromContext(ctx)
+	logger := log.FromContext(ctx).WithValues("vpc-endpoint-type", input.Type).WithValues("service-name", input.ServiceName)
 	logger.Info("Started updating VPC endpoint")
 	defer func() {
 		if err == nil {
@@ -40,25 +45,30 @@ func (c *client) Update(ctx context.Context, input UpdateVpcEndpointInput) (err 
 	if input.Region == "" {
 		return microerror.Maskf(errors.InvalidConfigError, "%T.Region must not be empty", input)
 	}
+	if input.ServiceName == "" {
+		return microerror.Maskf(errors.InvalidConfigError, "%T.ServiceName must not be empty", input)
+	}
+	if input.Type == "" {
+		return microerror.Maskf(errors.InvalidConfigError, "%T.Type must not be empty", input)
+	}
 	if input.VpcEndpointId == "" {
 		return microerror.Maskf(errors.InvalidConfigError, "%T.VpcId must not be empty", input)
 	}
+	if input.VPCEndpointGatewayConfig == nil {
+		return microerror.Maskf(errors.InvalidConfigError, "%T.VPCEndpointGatewayConfig cannot be nil", input)
+	}
 
-	if atLeastOneIsNotEmpty(input.AddSecurityGroupIds, input.AddSubnetIds, input.RemoveSecurityGroupIds, input.RemoveSubnetIds) {
+	if atLeastOneIsNotEmpty(input.VPCEndpointGatewayConfig.AddRouteTableIDs, input.VPCEndpointGatewayConfig.RemoveRouteTableIDs) {
 		logger.Info("VPC endpoint needs updates",
 			"vpc-endpoint-id", input.VpcEndpointId,
-			"add-security-groups", input.AddSecurityGroupIds,
-			"remove-security-groups", input.RemoveSecurityGroupIds,
-			"add-subnets", input.AddSubnetIds,
-			"remove-subnets", input.RemoveSubnetIds)
+			"add-route-tables", input.VPCEndpointGatewayConfig.AddRouteTableIDs,
+			"remove-route-tables", input.VPCEndpointGatewayConfig.RemoveRouteTableIDs)
 
 		ec2Input := ec2.ModifyVpcEndpointInput{
-			VpcEndpointId:          aws.String(input.VpcEndpointId),
-			AddSecurityGroupIds:    input.AddSecurityGroupIds,
-			AddSubnetIds:           input.AddSubnetIds,
-			RemoveSecurityGroupIds: input.RemoveSecurityGroupIds,
-			RemoveSubnetIds:        input.RemoveSubnetIds,
-			ResetPolicy:            aws.Bool(true),
+			VpcEndpointId:       aws.String(input.VpcEndpointId),
+			AddRouteTableIds:    input.VPCEndpointGatewayConfig.AddRouteTableIDs,
+			RemoveRouteTableIds: input.VPCEndpointGatewayConfig.RemoveRouteTableIDs,
+			ResetPolicy:         aws.Bool(true),
 		}
 		_, err = c.ec2Client.ModifyVpcEndpoint(ctx, &ec2Input, c.assumeRoleClient.AssumeRoleFunc(input.RoleARN, input.Region))
 		if err != nil {

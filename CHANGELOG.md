@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add necessary values for PSS policy warnings. 
 
+### Changed
+
+-  migrate from `secretmanager` VPC endpoint to `s3` endpoint for Flatcar.
+
 ## [0.4.0] - 2023-03-15
 
 ### Changed

@@ -52,6 +52,6 @@ type client struct {
 	assumeRoleClient assumerole.Client
 }
 
-func secretsManagerServiceName(region string) string {
-	return fmt.Sprintf("com.amazonaws.%s.secretsmanager", region)
+func s3ServiceName(region string) string {
+	return fmt.Sprintf("com.amazonaws.%s.s3", region)
 }

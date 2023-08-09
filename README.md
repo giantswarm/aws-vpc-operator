@@ -1,4 +1,4 @@
-[![CircleCI](https://circleci.com/gh/giantswarm/aws-vpc-operator.svg?style=shield)](https://circleci.com/gh/giantswarm/aws-vpc-operator)
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/giantswarm/aws-vpc-operator/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/giantswarm/aws-vpc-operator/tree/main)
 
 # aws-vpc-operator
 

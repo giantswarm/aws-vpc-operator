@@ -3,12 +3,12 @@ module github.com/giantswarm/aws-vpc-operator
 go 1.19
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.16.16
+	github.com/aws/aws-sdk-go-v2 v1.21.2
 	github.com/aws/aws-sdk-go-v2/config v1.17.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.12.20
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.60.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.16.19
-	github.com/aws/smithy-go v1.13.3
+	github.com/aws/smithy-go v1.15.0
 	github.com/giantswarm/k8smetadata v0.20.0
 	github.com/giantswarm/microerror v0.4.0
 	github.com/go-logr/logr v1.2.3

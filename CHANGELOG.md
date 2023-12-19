@@ -8,8 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
 - Add `global.podSecurityStandards.enforced` value for PSS migration.
+
+### Changed
+
+- Configure `gsoci.azurecr.io` as the default container image registry.
 
 ## [0.5.0] - 2023-07-20
 

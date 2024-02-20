@@ -14,7 +14,7 @@ require (
 	github.com/go-logr/logr v1.4.1
 	github.com/onsi/ginkgo/v2 v2.15.0
 	github.com/onsi/gomega v1.31.1
-	go.uber.org/zap v1.26.0
+	go.uber.org/zap v1.27.0
 	golang.org/x/text v0.14.0
 	k8s.io/apimachinery v0.25.2
 	k8s.io/client-go v0.25.2

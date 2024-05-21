@@ -11,7 +11,7 @@ require (
 	github.com/aws/smithy-go v1.20.0
 	github.com/giantswarm/k8smetadata v0.23.0
 	github.com/giantswarm/microerror v0.4.1
-	github.com/go-logr/logr v1.4.1
+	github.com/go-logr/logr v1.4.2
 	github.com/onsi/ginkgo/v2 v2.15.0
 	github.com/onsi/gomega v1.31.1
 	go.uber.org/zap v1.26.0

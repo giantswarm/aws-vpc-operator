@@ -1,7 +1,7 @@
 package tags
 
 import (
-	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
+	capa "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 )
 
 const (

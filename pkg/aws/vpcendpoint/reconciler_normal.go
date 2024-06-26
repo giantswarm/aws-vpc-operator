@@ -8,8 +8,8 @@ import (
 	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/giantswarm/k8smetadata/pkg/annotation"
 	"github.com/giantswarm/microerror"
-	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
 	capaservices "sigs.k8s.io/cluster-api-provider-aws/pkg/cloud/services"
+	capa "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws"

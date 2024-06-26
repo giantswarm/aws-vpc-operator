@@ -8,5 +8,5 @@ resources:
   domain: giantswarm.io
   group: infrastructure.cluster.x-k8s.io
   kind: AWSCluster
-  version: v1beta1
+  version: v1beta2
 version: "3"

@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/giantswarm/microerror"
-	capa "sigs.k8s.io/cluster-api-provider-aws/api/v1beta1"
-	capaservices "sigs.k8s.io/cluster-api-provider-aws/pkg/cloud/services"
+	capa "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
+	capaservices "sigs.k8s.io/cluster-api-provider-aws/v2/pkg/cloud/services"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws"

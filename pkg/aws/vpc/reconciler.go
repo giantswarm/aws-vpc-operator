@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/giantswarm/microerror"
-	capaservices "sigs.k8s.io/cluster-api-provider-aws/pkg/cloud/services"
 	capa "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
+	capaservices "sigs.k8s.io/cluster-api-provider-aws/v2/pkg/cloud/services"
 
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws"
 	"github.com/giantswarm/aws-vpc-operator/pkg/aws/tags"

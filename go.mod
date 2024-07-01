@@ -99,5 +99,5 @@ require (
 
 replace (
 	golang.org/x/text v0.3.7 => golang.org/x/text v0.3.8
-	google.golang.org/genproto => google.golang.org/genproto v0.0.0-20240624140628-dc46fd24d27d
+	google.golang.org/genproto => google.golang.org/genproto v0.0.0-20240701130421-f6361c86f094
 )

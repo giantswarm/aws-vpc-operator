@@ -710,10 +710,6 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 		if err != nil {
 			return ctrl.Result{}, microerror.Mask(err)
 		}
-		// remove subnet IDs
-		for i := range awsCluster.Spec.NetworkSpec.Subnets {
-			awsCluster.Spec.NetworkSpec.Subnets[i].ID = ""
-		}
 		conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "Subnets have been deleted")
 		logger.Info("Deleted subnets")
 	}

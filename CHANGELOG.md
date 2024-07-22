@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Update Go dependencies for CAPI/CAPA/controller-runtime
+
 ## [0.7.0] - 2024-06-27
 
 ### Changed
@@ -26,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add necessary values for PSS policy warnings. 
+- Add necessary values for PSS policy warnings.
 
 ### Changed
 

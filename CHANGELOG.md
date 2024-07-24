@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Update Go dependencies for CAPI/CAPA/controller-runtime
 
+### Fixed
+
+- Remove unsetting of subnet ID since `AWSCluster` CRD had a breaking change and requires the field
+
 ## [0.7.0] - 2024-06-27
 
 ### Changed

@@ -15,7 +15,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.19.1
 	github.com/onsi/gomega v1.34.1
 	go.uber.org/zap v1.27.0
-	golang.org/x/text v0.16.0
+	golang.org/x/text v0.17.0
 	k8s.io/apimachinery v0.29.3
 	k8s.io/client-go v0.29.3
 	sigs.k8s.io/cluster-api v1.7.4

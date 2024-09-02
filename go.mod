@@ -104,5 +104,5 @@ require (
 
 replace (
 	golang.org/x/text v0.3.7 => golang.org/x/text v0.3.8
-	google.golang.org/genproto => google.golang.org/genproto v0.0.0-20240820151423-278611b39280
+	google.golang.org/genproto => google.golang.org/genproto v0.0.0-20240827150818-7e3bb234dfed
 )

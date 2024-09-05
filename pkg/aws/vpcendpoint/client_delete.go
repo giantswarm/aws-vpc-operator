@@ -55,12 +55,12 @@ func (c *client) Delete(ctx context.Context, input DeleteVpcEndpointInput) (err 
 	if vpcEndpoint.VpcEndpointState == StateDeleted {
 		message := "VPC endpoint is already deleted"
 		logger.Info(message, "vpc-endpoint-id", vpcEndpoint.VpcEndpointId)
-		return microerror.Maskf(errors.ResourceAlreadyDeletedError, message)
+		return microerror.Maskf(errors.ResourceAlreadyDeletedError, "%s", message)
 	}
 	if vpcEndpoint.VpcEndpointState == StateDeleting {
 		message := "VPC endpoint deletion is already in progress"
 		logger.Info(message, "vpc-endpoint-id", vpcEndpoint.VpcEndpointId)
-		return microerror.Maskf(errors.ResourceDeletionInProgressError, message)
+		return microerror.Maskf(errors.ResourceDeletionInProgressError, "%s", message)
 	}
 
 	logger.Info("Found VPC endpoint to delete", "vpc-endpoint-id", vpcEndpoint.VpcEndpointId)

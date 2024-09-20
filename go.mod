@@ -20,7 +20,7 @@ require (
 	golang.org/x/text v0.18.0
 	k8s.io/apimachinery v0.31.0
 	k8s.io/client-go v0.31.0
-	sigs.k8s.io/cluster-api v1.7.4
+	sigs.k8s.io/cluster-api v1.8.3
 	sigs.k8s.io/cluster-api-provider-aws/v2 v2.5.2
 	sigs.k8s.io/controller-runtime v0.19.0
 )
@@ -42,7 +42,7 @@ require (
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/emicklei/go-restful/v3 v3.12.0 // indirect
+	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
@@ -95,7 +95,7 @@ require (
 	k8s.io/api v0.31.0 // indirect
 	k8s.io/apiextensions-apiserver v0.31.0 // indirect
 	k8s.io/apiserver v0.31.0 // indirect
-	k8s.io/cluster-bootstrap v0.29.3 // indirect
+	k8s.io/cluster-bootstrap v0.30.3 // indirect
 	k8s.io/component-base v0.31.0 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 // indirect

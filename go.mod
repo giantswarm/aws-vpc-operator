@@ -15,7 +15,7 @@ require (
 	github.com/giantswarm/microerror v0.4.1
 	github.com/go-logr/logr v1.4.2
 	github.com/onsi/ginkgo/v2 v2.21.0
-	github.com/onsi/gomega v1.35.0
+	github.com/onsi/gomega v1.35.1
 	go.uber.org/zap v1.27.0
 	golang.org/x/text v0.19.0
 	k8s.io/apimachinery v0.31.2

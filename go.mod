@@ -18,8 +18,8 @@ require (
 	github.com/onsi/gomega v1.36.2
 	go.uber.org/zap v1.27.0
 	golang.org/x/text v0.21.0
-	k8s.io/apimachinery v0.32.0
-	k8s.io/client-go v0.32.0
+	k8s.io/apimachinery v0.32.1
+	k8s.io/client-go v0.32.1
 	sigs.k8s.io/cluster-api v1.8.6
 	sigs.k8s.io/cluster-api-provider-aws/v2 v2.7.1
 	sigs.k8s.io/controller-runtime v0.19.4
@@ -91,7 +91,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/api v0.32.0 // indirect
+	k8s.io/api v0.32.1 // indirect
 	k8s.io/apiextensions-apiserver v0.31.0 // indirect
 	k8s.io/apiserver v0.31.0 // indirect
 	k8s.io/cluster-bootstrap v0.30.3 // indirect

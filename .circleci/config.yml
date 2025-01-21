@@ -40,11 +40,8 @@ workflows:
         filters:
           tags:
             only: /^v.*/
-
           branches:
-            ignore:
-            - main
-            - master
+            only: /.*/ 
     - architect/push-to-app-collection:
         context: architect
         name: push-to-capa-app-collection

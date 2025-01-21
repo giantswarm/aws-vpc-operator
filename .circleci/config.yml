@@ -25,9 +25,7 @@ workflows:
             only: /^v.*/
 
           branches:
-            ignore:
-            - main
-            - master
+            only: /.*/
     - architect/push-to-app-catalog:
         context: architect
         name: push-to-app-catalog

@@ -1,8 +1,9 @@
 apiVersion: v2
 
 name: aws-vpc-operator
-appVersion: "[[ .AppVersion ]]"
-version: "[[ .Version ]]"
+appVersion: "0.0.1-dev"
+version: "0.0.1-dev"
+icon: https://s.giantswarm.io/app-icons/aws/1/dark.svg
 
 # Please describe what the app provides in a sentence or two.
 description: Operator for managing private AWS VPCs for Cluster API AWS workload clusters

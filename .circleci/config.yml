@@ -31,6 +31,7 @@ workflows:
     - architect/push-to-app-catalog:
         context: architect
         name: push-to-app-catalog
+        executor: app-build-suite
         app_catalog: control-plane-catalog
         app_catalog_test: control-plane-test-catalog
         chart: aws-vpc-operator

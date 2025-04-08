@@ -188,7 +188,7 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	//
 	awsCluster := &capa.AWSCluster{}
 
-	err := r.Client.Get(ctx, req.NamespacedName, awsCluster)
+	err := r.Get(ctx, req.NamespacedName, awsCluster)
 	if apierrors.IsNotFound(err) {
 		log.Info("AWSCluster no longer exists")
 		return ctrl.Result{}, nil
@@ -220,7 +220,7 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		Name:      awsCluster.Spec.IdentityRef.Name,
 	}
 
-	err = r.Client.Get(ctx, identityNamespacedName, identity)
+	err = r.Get(ctx, identityNamespacedName, identity)
 	if err != nil {
 		return ctrl.Result{}, microerror.Mask(err)
 	}
@@ -501,7 +501,7 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 		Namespace: awsCluster.Namespace,
 		Name:      awsCluster.Name,
 	}
-	err = r.Client.Get(ctx, clusterKey, cluster)
+	err = r.Get(ctx, clusterKey, cluster)
 	if err != nil {
 		return ctrl.Result{}, microerror.Mask(err)
 	}

@@ -34,7 +34,6 @@ import (
 	capa "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	capi "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
-	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -510,9 +509,9 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 	//
 	// Reconcile VPC endpoints
 	//
-	if !capiconditions.IsTrue(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
+	if !conditions.IsTrue(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
 		// Security groups are still not ready, we wait for them first
-		capiconditions.MarkFalse(awsCluster, VpcEndpointReady, ClusterSecurityGroupsNotReady, capi.ConditionSeverityWarning, "Security groups are still not ready")
+		conditions.MarkFalse(awsCluster, VpcEndpointReady, ClusterSecurityGroupsNotReady, capi.ConditionSeverityWarning, "Security groups are still not ready")
 		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 	} else {
 		reconcileRequest := aws.ReconcileRequest[vpcendpoint.Spec]{
@@ -535,7 +534,7 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 		})
 		if err != nil {
 			log.Error(err, "Failed to lookup subnets")
-			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, SubnetLookupFailed, capi.ConditionSeverityWarning, "Failed to lookup subnets to use for VPC Endpoints")
+			conditions.MarkFalse(awsCluster, VpcEndpointReady, SubnetLookupFailed, capi.ConditionSeverityWarning, "Failed to lookup subnets to use for VPC Endpoints")
 			return ctrl.Result{}, err
 		}
 		// If no specific subnets found we'll fallback to picking any from the cluster
@@ -564,7 +563,7 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 		})
 		if err != nil {
 			log.Error(err, "Failed to lookup route tables")
-			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, SubnetLookupFailed, capi.ConditionSeverityWarning, "Failed to lookup route tables to use for VPC Endpoints")
+			conditions.MarkFalse(awsCluster, VpcEndpointReady, SubnetLookupFailed, capi.ConditionSeverityWarning, "Failed to lookup route tables to use for VPC Endpoints")
 			return ctrl.Result{}, err
 		}
 
@@ -574,15 +573,15 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 
 		result, err := r.vpcEndpointReconciler.Reconcile(ctx, reconcileRequest)
 		if err != nil {
-			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, "ReconciliationError", capi.ConditionSeverityError, "An error occurred during reconciliation, check logs")
+			conditions.MarkFalse(awsCluster, VpcEndpointReady, "ReconciliationError", capi.ConditionSeverityError, "An error occurred during reconciliation, check logs")
 			return ctrl.Result{}, microerror.Mask(err)
 		}
 
 		if strings.EqualFold(result.Status.VpcEndpointState, vpcendpoint.StateAvailable) {
-			capiconditions.MarkTrue(awsCluster, VpcEndpointReady)
+			conditions.MarkTrue(awsCluster, VpcEndpointReady)
 		} else {
 			reason := fmt.Sprintf("VpcEndpointState%s", result.Status.VpcEndpointState)
-			capiconditions.MarkFalse(awsCluster, VpcEndpointReady, reason, capi.ConditionSeverityWarning, "VPC endpoint is not available")
+			conditions.MarkFalse(awsCluster, VpcEndpointReady, reason, capi.ConditionSeverityWarning, "VPC endpoint is not available")
 			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 		}
 	}
@@ -623,7 +622,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	// Wait for CAPA to delete load balancer before we delete VPC, subnets and route tables.
 	//
 	if controllerutil.ContainsFinalizer(awsCluster, capa.ClusterFinalizer) {
-		if capiconditions.IsTrue(awsCluster, capa.LoadBalancerReadyCondition) ||
+		if conditions.IsTrue(awsCluster, capa.LoadBalancerReadyCondition) ||
 			isBeingDeleted(awsCluster, capa.LoadBalancerReadyCondition) {
 			// load balancer deletion did not start, or it is in progress
 			logger.Info("Waiting for CAPA to delete load balancer, trying deletion again in a minute")
@@ -637,7 +636,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 		//
 		// Wait for CAPA to delete security groups before we delete VPC, subnets and route tables.
 		//
-		if capiconditions.IsTrue(awsCluster, capa.ClusterSecurityGroupsReadyCondition) ||
+		if conditions.IsTrue(awsCluster, capa.ClusterSecurityGroupsReadyCondition) ||
 			isBeingDeleted(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
 			// security groups deletion did not start, or it is in progress
 			logger.Info("Waiting for CAPA to delete security groups, trying deletion again in a minute")

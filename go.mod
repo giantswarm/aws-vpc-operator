@@ -18,8 +18,8 @@ require (
 	github.com/onsi/gomega v1.37.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/text v0.25.0
-	k8s.io/apimachinery v0.32.1
-	k8s.io/client-go v0.32.1
+	k8s.io/apimachinery v0.33.0
+	k8s.io/client-go v0.33.0
 	sigs.k8s.io/cluster-api v1.8.6
 	sigs.k8s.io/cluster-api-provider-aws/v2 v2.7.1
 	sigs.k8s.io/controller-runtime v0.19.4

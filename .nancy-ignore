@@ -1,10 +1,1 @@
-sonatype-2022-6522
-
-# pkg:golang/k8s.io/apiserver@v0.25.0
-CVE-2020-8561
-
-# pkg:golang/google.golang.org/grpc@v1.47.0
-CVE-2023-32731 
-
-# pkg:golang/golang.org/x/net@v0.29.0
-CVE-2024-8421
+CVE-2025-4673 until=2025-07-13 # golang.org/x/net@v0.40.0

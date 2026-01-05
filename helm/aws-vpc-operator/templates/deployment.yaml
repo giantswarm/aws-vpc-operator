@@ -33,6 +33,10 @@ spec:
         - /manager
         args:
         - --leader-elect
+        ports:
+        - containerPort: 8081
+          name: health
+          protocol: TCP
         livenessProbe:
           httpGet:
             path: /healthz

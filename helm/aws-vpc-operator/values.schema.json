@@ -92,6 +92,10 @@
                     "type": "boolean",
                     "default": false
                 },
+                "readOnlyRootFilesystem": {
+                    "type": "boolean",
+                    "default": true
+                },
                 "seccompProfile": {
                     "type": "object",
                     "properties": {

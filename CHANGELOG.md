@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-01-30
+
 ### Changed
 - Build with up-to-date pipelines.
 - Migrate to App Build Suite (ABS).
@@ -119,7 +121,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed project name in the template.
 - Renamed `Makefile` to `Makefile.kubebuilder.mk`.
 
-[Unreleased]: https://github.com/giantswarm/aws-vpc-operator/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/giantswarm/aws-vpc-operator/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/giantswarm/aws-vpc-operator/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/giantswarm/aws-vpc-operator/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/giantswarm/aws-vpc-operator/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/giantswarm/aws-vpc-operator/compare/v0.6.0...v0.7.0

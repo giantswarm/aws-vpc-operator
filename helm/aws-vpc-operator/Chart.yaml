@@ -1,7 +1,7 @@
 apiVersion: v2
 name: aws-vpc-operator
-version: 0.9.0-dev
-appVersion: 0.9.0-dev
+version: 0.8.2
+appVersion: 0.8.2
 description: Operator for managing private AWS VPCs for Cluster API AWS workload clusters
 home: https://github.com/giantswarm/aws-vpc-operator
 icon: https://s.giantswarm.io/app-icons/giantswarm/1/dark.svg

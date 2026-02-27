@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `PodSecurityPolicy`.
 - Removed `global.podSecurityStandards.enforced` helm value.
 
+### Changed
+
+- Use `.Chart.AppVersion` for default image tag.
+
+### Fixed
+
+- Fix duplicate `runAsNonRoot` key in deployment template.
+
 ## [0.8.2] - 2026-01-30
 
 ### Changed

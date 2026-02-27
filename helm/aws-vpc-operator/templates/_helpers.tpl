@@ -38,7 +38,7 @@ helm.sh/chart: {{ include "chart" . | quote }}
 Image tag helper
 */}}
 {{- define "image.tag" -}}
-{{- .Values.image.tag | default .Chart.Version -}}
+{{- .Values.image.tag | default .Chart.AppVersion -}}
 {{- end -}}
 
 {{/*

@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.12
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.294.1
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.9
-	github.com/aws/smithy-go v1.24.2
+	github.com/aws/smithy-go v1.24.3
 	github.com/giantswarm/k8smetadata v0.26.0
 	github.com/giantswarm/microerror v0.4.1
 	github.com/go-logr/logr v1.4.3

@@ -20,8 +20,8 @@ require (
 	golang.org/x/text v0.36.0
 	k8s.io/apimachinery v0.32.1
 	k8s.io/client-go v0.32.1
-	sigs.k8s.io/cluster-api v1.8.6
-	sigs.k8s.io/cluster-api-provider-aws/v2 v2.7.1
+	sigs.k8s.io/cluster-api v1.14.1
+	sigs.k8s.io/cluster-api-provider-aws/v2 v2.13.0
 	sigs.k8s.io/controller-runtime v0.19.4
 )
 

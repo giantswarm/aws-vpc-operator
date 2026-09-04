@@ -17,7 +17,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.28.2
 	github.com/onsi/gomega v1.39.1
 	go.uber.org/zap v1.27.1
-	golang.org/x/text v0.36.0
+	golang.org/x/text v0.40.0
 	k8s.io/apimachinery v0.32.1
 	k8s.io/client-go v0.32.1
 	sigs.k8s.io/cluster-api v1.8.6
@@ -79,16 +79,16 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.49.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
-	golang.org/x/mod v0.34.0 // indirect
-	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/mod v0.38.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/oauth2 v0.23.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/term v0.41.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/time v0.7.0 // indirect
-	golang.org/x/tools v0.43.0 // indirect
+	golang.org/x/tools v0.48.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240617180043-68d350f18fd4 // indirect
 	google.golang.org/protobuf v1.36.7 // indirect
@@ -109,4 +109,21 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace golang.org/x/text v0.3.7 => golang.org/x/text v0.3.8
+replace (
+	golang.org/x/text v0.3.7 => golang.org/x/text v0.3.8
+	golang.org/x/text v0.36.0 => golang.org/x/text v0.41.0
+)
+
+replace github.com/dvsekhvalnov/jose2go v1.6.0 => github.com/dvsekhvalnov/jose2go v1.10.0
+
+replace github.com/go-jose/go-jose/v4 v4.0.2 => github.com/go-jose/go-jose/v4 v4.1.5
+
+replace github.com/golang-jwt/jwt/v4 v4.5.0 => github.com/golang-jwt/jwt/v4 v4.5.2
+
+replace github.com/golang/glog v1.2.1 => github.com/golang/glog v1.2.5
+
+replace github.com/yuin/goldmark v1.4.13 => github.com/yuin/goldmark v1.8.6
+
+replace github.com/moby/spdystream v0.5.0 => github.com/moby/spdystream v0.5.1
+
+replace github.com/klauspost/compress v1.16.0 => github.com/klauspost/compress v1.20.0

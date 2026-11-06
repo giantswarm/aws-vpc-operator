@@ -14,7 +14,7 @@ require (
 	github.com/giantswarm/k8smetadata v0.26.0
 	github.com/giantswarm/microerror v0.4.1
 	github.com/go-logr/logr v1.4.4
-	github.com/onsi/ginkgo/v2 v2.33.1
+	github.com/onsi/ginkgo/v2 v2.34.0
 	github.com/onsi/gomega v1.44.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/text v0.43.0

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Use optimistic locking when adding or removing the finalizer on the AWSCluster, so a patch built from an outdated object fails with a conflict instead of overwriting other controllers' finalizers.
 - The `helm.sh/chart` label is valid for long chart versions: the 63-character cut trims the whole trailing run of `-`, `.` and `_`.
 
 ## [1.0.0] - 2026-02-27

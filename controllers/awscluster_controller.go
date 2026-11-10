@@ -18,7 +18,9 @@ package controllers
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -226,13 +228,40 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	//
+	// If the AWSCluster doesn't have our finalizer, add it before creating anything in AWS.
+	// Finalizers are written with their own patch, see patchFinalizers.
+	//
+	if awsCluster.DeletionTimestamp.IsZero() && !controllerutil.ContainsFinalizer(awsCluster, AwsVpcOperatorFinalizer) {
+		awsCluster, err = r.patchFinalizers(ctx, awsCluster, append(slices.Clone(awsCluster.GetFinalizers()), AwsVpcOperatorFinalizer))
+		if err != nil {
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+	}
+
+	//
 	// Create patch helper that will update reconciler AWSCLuster if there are any changes in the CR
 	//
 	patchHelper, err := patch.NewHelper(awsCluster, r.Client)
 	if err != nil {
 		return ctrl.Result{}, microerror.Mask(err)
 	}
+	originalAWSCluster := awsCluster.DeepCopy()
 	defer func() {
+		// reconcileDelete removes our finalizer from awsCluster. Write that with its own patch,
+		// see patchFinalizers, and keep the patch helper from writing the finalizers again.
+		if !slices.Equal(awsCluster.GetFinalizers(), originalAWSCluster.GetFinalizers()) {
+			patched, err := r.patchFinalizers(ctx, originalAWSCluster, awsCluster.GetFinalizers())
+			if err != nil {
+				// Still let the patch helper write the other changes.
+				reterr = stderrors.Join(reterr, microerror.Mask(err))
+			} else if !patched.DeletionTimestamp.IsZero() && len(patched.GetFinalizers()) == 0 {
+				// Removing our finalizer let the API server delete the AWSCluster, so there is
+				// nothing left to patch.
+				return
+			}
+			awsCluster.SetFinalizers(originalAWSCluster.GetFinalizers())
+		}
+
 		conditionsToUpdate := []capi.ConditionType{
 			capa.VpcReadyCondition,
 			capa.SubnetsReadyCondition,
@@ -264,8 +293,6 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, reterr error) {
 	log := log.FromContext(ctx)
-	// If the AWSCluster doesn't have our finalizer, add it.
-	controllerutil.AddFinalizer(awsCluster, AwsVpcOperatorFinalizer)
 
 	vpcSpec := vpc.Spec{
 		ClusterName:    awsCluster.Name,
@@ -742,6 +769,27 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	// Cluster is deleted so remove the finalizer.
 	controllerutil.RemoveFinalizer(awsCluster, AwsVpcOperatorFinalizer)
 	return ctrl.Result{}, nil
+}
+
+// patchFinalizers sets the finalizers of original, the AWSCluster as it was read, to
+// finalizers, and returns the patched AWSCluster. It sends a merge patch that only contains the
+// finalizers and carries the resourceVersion of original.
+//
+// The patch helper sends a plain merge patch without a resourceVersion, and a merge patch
+// replaces the whole finalizers list. Other controllers put finalizers on the AWSCluster too,
+// so a patch built from an outdated object could add back a finalizer another controller has
+// removed, or drop one it has added. With the resourceVersion, the API server rejects an
+// outdated patch with a 409 Conflict, and the reconciliation is retried with the current object.
+func (r *AWSClusterReconciler) patchFinalizers(ctx context.Context, original *capa.AWSCluster, finalizers []string) (*capa.AWSCluster, error) {
+	patched := original.DeepCopy()
+	patched.SetFinalizers(finalizers)
+
+	err := r.Patch(ctx, patched, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
+	if err != nil {
+		return nil, err
+	}
+
+	return patched, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

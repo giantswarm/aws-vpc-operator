@@ -65,6 +65,9 @@ type AWSClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
+	// apiReader reads from the API server instead of the cache, see removeFinalizer.
+	apiReader client.Reader
+
 	vpcReconciler         vpc.Reconciler
 	subnetsReconciler     subnets.Reconciler
 	subnetsClient         subnets.Client
@@ -76,6 +79,7 @@ type AWSClusterReconciler struct {
 // NewAWSClusterReconciler creates a new AWSClusterReconciler for specified client and scheme.
 func NewAWSClusterReconciler(
 	client client.Client,
+	apiReader client.Reader,
 	scheme *runtime.Scheme,
 	ec2Client *ec2.Client,
 	assumeRoleClient assumerole.Client,
@@ -155,8 +159,9 @@ func NewAWSClusterReconciler(
 	}
 
 	return &AWSClusterReconciler{
-		Client: client,
-		Scheme: scheme,
+		Client:    client,
+		Scheme:    scheme,
+		apiReader: apiReader,
 
 		vpcReconciler:         vpcReconciler,
 		subnetsReconciler:     subnetsReconciler,
@@ -247,18 +252,12 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 	originalAWSCluster := awsCluster.DeepCopy()
 	defer func() {
-		// reconcileDelete removes our finalizer from awsCluster. Write that with its own patch,
-		// see patchFinalizers, and keep the patch helper from writing the finalizers again.
-		if !slices.Equal(awsCluster.GetFinalizers(), originalAWSCluster.GetFinalizers()) {
-			patched, err := r.patchFinalizers(ctx, originalAWSCluster, awsCluster.GetFinalizers())
-			if err != nil {
-				// Still let the patch helper write the other changes.
-				reterr = stderrors.Join(reterr, microerror.Mask(err))
-			} else if !patched.DeletionTimestamp.IsZero() && len(patched.GetFinalizers()) == 0 {
-				// Removing our finalizer let the API server delete the AWSCluster, so there is
-				// nothing left to patch.
-				return
-			}
+		// reconcileDelete removes our finalizer from awsCluster. Keep the patch helper from writing
+		// the finalizers, and remove it with its own patch once the helper has written the other
+		// changes, see removeFinalizer.
+		finalizerRemoved := controllerutil.ContainsFinalizer(originalAWSCluster, AwsVpcOperatorFinalizer) &&
+			!controllerutil.ContainsFinalizer(awsCluster, AwsVpcOperatorFinalizer)
+		if finalizerRemoved {
 			awsCluster.SetFinalizers(originalAWSCluster.GetFinalizers())
 		}
 
@@ -281,6 +280,13 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err != nil {
 			// An error occurred while patching the AWSCluster resource
 			reterr = err
+			return
+		}
+
+		if finalizerRemoved {
+			if err := r.removeFinalizer(ctx, awsCluster); err != nil {
+				reterr = stderrors.Join(reterr, err)
+			}
 		}
 	}()
 
@@ -769,6 +775,26 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 	// Cluster is deleted so remove the finalizer.
 	controllerutil.RemoveFinalizer(awsCluster, AwsVpcOperatorFinalizer)
 	return ctrl.Result{}, nil
+}
+
+// removeFinalizer removes our finalizer from the AWSCluster with patchFinalizers. It reads the
+// AWSCluster from the API server, not from the cache, so the patch carries the resourceVersion
+// written by the patch helper and only conflicts with writes made since then, instead of with
+// any write made during the reconciliation.
+func (r *AWSClusterReconciler) removeFinalizer(ctx context.Context, awsCluster *capa.AWSCluster) error {
+	latest := &capa.AWSCluster{}
+	if err := r.apiReader.Get(ctx, client.ObjectKeyFromObject(awsCluster), latest); err != nil {
+		return microerror.Mask(client.IgnoreNotFound(err))
+	}
+	if !controllerutil.ContainsFinalizer(latest, AwsVpcOperatorFinalizer) {
+		return nil
+	}
+
+	finalizers := slices.DeleteFunc(slices.Clone(latest.GetFinalizers()), func(f string) bool {
+		return f == AwsVpcOperatorFinalizer
+	})
+	_, err := r.patchFinalizers(ctx, latest, finalizers)
+	return microerror.Mask(err)
 }
 
 // patchFinalizers sets the finalizers of original, the AWSCluster as it was read, to

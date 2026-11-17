@@ -35,7 +35,7 @@ func newFinalizersTestReconciler(t *testing.T, finalizers ...string) (*AWSCluste
 		t.Fatal(err)
 	}
 
-	return &AWSClusterReconciler{Client: k8sClient}, read
+	return &AWSClusterReconciler{Client: k8sClient, apiReader: k8sClient}, read
 }
 
 // removeOtherFinalizer simulates another controller removing its finalizer after awsCluster was read.
@@ -131,6 +131,33 @@ func TestPatchFinalizers(t *testing.T) {
 		err = r.Get(ctx, client.ObjectKeyFromObject(awsCluster), &capa.AWSCluster{})
 		if !apierrors.IsNotFound(err) {
 			t.Errorf("expected the AWSCluster to be gone, got %v", err)
+		}
+	})
+}
+
+func TestRemoveFinalizer(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("removes the finalizer from the current object when another controller removed its finalizer after the object was read", func(t *testing.T) {
+		r, awsCluster := newFinalizersTestReconciler(t, AwsVpcOperatorFinalizer, otherFinalizer)
+		removeOtherFinalizer(t, r.Client, awsCluster)
+
+		if err := r.removeFinalizer(ctx, awsCluster); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := getFinalizers(t, r.Client, awsCluster); len(got) != 0 {
+			t.Errorf("expected no finalizers, got %v", got)
+		}
+	})
+
+	t.Run("does nothing when the finalizer is already gone", func(t *testing.T) {
+		r, awsCluster := newFinalizersTestReconciler(t, otherFinalizer)
+
+		if err := r.removeFinalizer(ctx, awsCluster); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := getFinalizers(t, r.Client, awsCluster); len(got) != 1 || got[0] != otherFinalizer {
+			t.Errorf("expected only %s, got %v", otherFinalizer, got)
 		}
 	})
 }

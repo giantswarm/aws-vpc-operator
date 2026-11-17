@@ -123,6 +123,7 @@ func main() {
 
 	awsReconciler, err := controllers.NewAWSClusterReconciler(
 		mgr.GetClient(),
+		mgr.GetAPIReader(),
 		mgr.GetScheme(),
 		ec2Client,
 		assumeRoleClient,

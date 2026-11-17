@@ -243,53 +243,6 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
-	//
-	// Create patch helper that will update reconciler AWSCLuster if there are any changes in the CR
-	//
-	patchHelper, err := patch.NewHelper(awsCluster, r.Client)
-	if err != nil {
-		return ctrl.Result{}, microerror.Mask(err)
-	}
-	originalAWSCluster := awsCluster.DeepCopy()
-	defer func() {
-		// reconcileDelete removes our finalizer from awsCluster. Keep the patch helper from writing
-		// the finalizers, and remove it with its own patch once the helper has written the other
-		// changes, see removeFinalizer.
-		finalizerRemoved := controllerutil.ContainsFinalizer(originalAWSCluster, AwsVpcOperatorFinalizer) &&
-			!controllerutil.ContainsFinalizer(awsCluster, AwsVpcOperatorFinalizer)
-		if finalizerRemoved {
-			awsCluster.SetFinalizers(originalAWSCluster.GetFinalizers())
-		}
-
-		conditionsToUpdate := []capi.ConditionType{
-			capa.VpcReadyCondition,
-			capa.SubnetsReadyCondition,
-			// capa.RouteTablesReadyCondition,
-		}
-		err := patchHelper.Patch(
-			ctx,
-			awsCluster,
-			patch.WithOwnedConditions{
-				Conditions: conditionsToUpdate,
-			})
-		if !awsCluster.DeletionTimestamp.IsZero() && apierrors.IsNotFound(err) {
-			// AWSCluster is already deleted, so ignore not found error since
-			// there is nothing to upgrade
-			return
-		}
-		if err != nil {
-			// An error occurred while patching the AWSCluster resource
-			reterr = err
-			return
-		}
-
-		if finalizerRemoved {
-			if err := r.removeFinalizer(ctx, awsCluster); err != nil {
-				reterr = stderrors.Join(reterr, err)
-			}
-		}
-	}()
-
 	if !awsCluster.DeletionTimestamp.IsZero() {
 		return r.reconcileDelete(ctx, log, awsCluster, identity.Spec.RoleArn)
 	}
@@ -299,6 +252,18 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, reterr error) {
 	log := log.FromContext(ctx)
+
+	patchHelper, err := patch.NewHelper(awsCluster, r.Client)
+	if err != nil {
+		return ctrl.Result{}, microerror.Mask(err)
+	}
+	// Every return path below changes conditions or the spec (e.g. the VPC ID right after the VPC
+	// is created), so the AWSCluster is patched whichever way this returns.
+	defer func() {
+		if err := r.patchAWSCluster(ctx, patchHelper, awsCluster); err != nil {
+			reterr = stderrors.Join(reterr, err)
+		}
+	}()
 
 	vpcSpec := vpc.Spec{
 		ClusterName:    awsCluster.Name,
@@ -622,7 +587,32 @@ func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.
 	return ctrl.Result{}, nil
 }
 
-func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, err error) {
+// reconcileDelete deletes the AWS resources, writes the AWSCluster's condition and spec changes,
+// and only once everything in AWS is gone removes our finalizer, with its own patch, see
+// removeFinalizer.
+func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (ctrl.Result, error) {
+	patchHelper, err := patch.NewHelper(awsCluster, r.Client)
+	if err != nil {
+		return ctrl.Result{}, microerror.Mask(err)
+	}
+
+	result, deleted, err := r.deleteAWSResources(ctx, logger, awsCluster, roleArn)
+
+	// Write the condition and spec changes whatever the outcome, and before the finalizer is
+	// removed, so they are written before the AWSCluster can go away.
+	if patchErr := r.patchAWSCluster(ctx, patchHelper, awsCluster); patchErr != nil {
+		return ctrl.Result{}, stderrors.Join(err, patchErr)
+	}
+	if err != nil || !deleted {
+		return result, err
+	}
+
+	return ctrl.Result{}, r.removeFinalizer(ctx, awsCluster)
+}
+
+// deleteAWSResources deletes the VPC endpoint, route tables, subnets and VPC. It returns
+// deleted=true once they are all gone.
+func (r *AWSClusterReconciler) deleteAWSResources(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, deleted bool, err error) {
 	//
 	// Delete VPC endpoint. We delete VPC endpoint first, regardless of what CAPA
 	// deleted (if anything) until now.
@@ -645,7 +635,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 		}
 		err = r.vpcEndpointReconciler.ReconcileDelete(ctx, vpcEndpointDeleteRequest)
 		if err != nil {
-			return ctrl.Result{}, microerror.Mask(err)
+			return ctrl.Result{}, false, microerror.Mask(err)
 		}
 		conditions.MarkFalse(awsCluster, VpcEndpointReady, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC endpoint has been deleted")
 		logger.Info("Deleted VPC endpoint", "vpc-id", vpcId)
@@ -659,10 +649,10 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 			isBeingDeleted(awsCluster, capa.LoadBalancerReadyCondition) {
 			// load balancer deletion did not start, or it is in progress
 			logger.Info("Waiting for CAPA to delete load balancer, trying deletion again in a minute")
-			return ctrl.Result{RequeueAfter: time.Minute}, nil
+			return ctrl.Result{RequeueAfter: time.Minute}, false, nil
 		} else if deletionFailed(awsCluster, capa.LoadBalancerReadyCondition) {
 			logger.Info("CAPA failed to delete load balancer, trying deletion of route tables, subnets and VPC again in 15 minutes")
-			return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
+			return ctrl.Result{RequeueAfter: 15 * time.Minute}, false, nil
 		}
 		logger.Info("CAPA deleted load balancer, proceeding with deletion")
 
@@ -673,10 +663,10 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 			isBeingDeleted(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
 			// security groups deletion did not start, or it is in progress
 			logger.Info("Waiting for CAPA to delete security groups, trying deletion again in a minute")
-			return ctrl.Result{RequeueAfter: time.Minute}, nil
+			return ctrl.Result{RequeueAfter: time.Minute}, false, nil
 		} else if deletionFailed(awsCluster, capa.ClusterSecurityGroupsReadyCondition) {
 			logger.Info("CAPA failed to delete security groups, trying deletion of route tables, subnets and VPC again in 15 minutes")
-			return ctrl.Result{RequeueAfter: 15 * time.Minute}, nil
+			return ctrl.Result{RequeueAfter: 15 * time.Minute}, false, nil
 		}
 		logger.Info("CAPA deleted security groups, proceeding with deletion")
 	} else {
@@ -702,7 +692,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 		conditions.MarkFalse(awsCluster, capa.RouteTablesReadyCondition, capi.DeletingReason, capi.ConditionSeverityInfo, "Route tables are being deleted")
 		err = r.routeTablesReconciler.ReconcileDelete(ctx, routeTablesDeleteRequest)
 		if err != nil {
-			return ctrl.Result{}, microerror.Mask(err)
+			return ctrl.Result{}, false, microerror.Mask(err)
 		}
 		// remove route table IDs
 		for i := range awsCluster.Spec.NetworkSpec.Subnets {
@@ -740,7 +730,7 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 		conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, capi.DeletingReason, capi.ConditionSeverityInfo, "Subnets are being deleted")
 		err = r.subnetsReconciler.ReconcileDelete(ctx, subnetsDeleteRequest)
 		if err != nil {
-			return ctrl.Result{}, microerror.Mask(err)
+			return ctrl.Result{}, false, microerror.Mask(err)
 		}
 		conditions.MarkFalse(awsCluster, capa.SubnetsReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "Subnets have been deleted")
 		logger.Info("Deleted subnets")
@@ -766,15 +756,35 @@ func (r *AWSClusterReconciler) reconcileDelete(ctx context.Context, logger logr.
 		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, capi.DeletingReason, capi.ConditionSeverityInfo, "VPC is being deleted")
 		err = r.vpcReconciler.ReconcileDelete(ctx, vpcDeleteRequest)
 		if err != nil {
-			return ctrl.Result{}, microerror.Mask(err)
+			return ctrl.Result{}, false, microerror.Mask(err)
 		}
 		conditions.MarkFalse(awsCluster, capa.VpcReadyCondition, capi.DeletedReason, capi.ConditionSeverityInfo, "VPC has been deleted")
 		logger.Info("Deleted VPC", "vpc-id", vpcId)
 	}
 
-	// Cluster is deleted so remove the finalizer.
-	controllerutil.RemoveFinalizer(awsCluster, AwsVpcOperatorFinalizer)
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, true, nil
+}
+
+// patchAWSCluster writes the changes made to awsCluster since patchHelper was created. Our
+// finalizer is never changed in memory, see patchFinalizers.
+func (r *AWSClusterReconciler) patchAWSCluster(ctx context.Context, patchHelper *patch.Helper, awsCluster *capa.AWSCluster) error {
+	conditionsToUpdate := []capi.ConditionType{
+		capa.VpcReadyCondition,
+		capa.SubnetsReadyCondition,
+		// capa.RouteTablesReadyCondition,
+	}
+	err := patchHelper.Patch(
+		ctx,
+		awsCluster,
+		patch.WithOwnedConditions{
+			Conditions: conditionsToUpdate,
+		})
+	if !awsCluster.DeletionTimestamp.IsZero() && apierrors.IsNotFound(err) {
+		// AWSCluster is already deleted, so ignore not found error since
+		// there is nothing to upgrade
+		return nil
+	}
+	return err
 }
 
 // removeFinalizer removes our finalizer from the AWSCluster with patchFinalizers. It reads the

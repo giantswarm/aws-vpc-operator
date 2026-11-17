@@ -1,6 +1,7 @@
-CVE-2026-86831 until=2026-12-04 # github.com/aws/amazon-vpc-cni-k8s@v1.15.5 since=2026-11-04
+CVE-2026-86831 until=2026-12-11 # github.com/aws/amazon-vpc-cni-k8s@v1.15.5 since=2026-11-04
 CVE-2026-78659 until=2026-11-13 # golang.org/x/net@v0.58.0
 CVE-2026-78660 until=2026-11-13 # golang.org/x/net@v0.58.0
 CVE-2026-78663 until=2026-11-13 # golang.org/x/net@v0.58.0
 CVE-2026-78669 until=2026-11-13 # golang.org/x/net@v0.58.0
 CVE-2026-97032 until=2026-11-13 # golang.org/x/net@v0.58.0
+CVE-2026-122266 until=2026-12-11 # github.com/aws/amazon-vpc-cni-k8s@v1.15.5 since=2026-11-11

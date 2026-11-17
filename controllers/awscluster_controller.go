@@ -232,17 +232,6 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, microerror.Mask(err)
 	}
 
-	//
-	// If the AWSCluster doesn't have our finalizer, add it before creating anything in AWS.
-	// Finalizers are written with their own patch, see patchFinalizers.
-	//
-	if awsCluster.DeletionTimestamp.IsZero() && !controllerutil.ContainsFinalizer(awsCluster, AwsVpcOperatorFinalizer) {
-		awsCluster, err = r.patchFinalizers(ctx, awsCluster, append(slices.Clone(awsCluster.GetFinalizers()), AwsVpcOperatorFinalizer))
-		if err != nil {
-			return ctrl.Result{}, microerror.Mask(err)
-		}
-	}
-
 	if !awsCluster.DeletionTimestamp.IsZero() {
 		return r.reconcileDelete(ctx, log, awsCluster, identity.Spec.RoleArn)
 	}
@@ -252,6 +241,17 @@ func (r *AWSClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 func (r *AWSClusterReconciler) reconcileNormal(ctx context.Context, logger logr.Logger, awsCluster *capa.AWSCluster, roleArn string) (_ ctrl.Result, reterr error) {
 	log := log.FromContext(ctx)
+
+	// If the AWSCluster doesn't have our finalizer, add it before creating anything in AWS, and
+	// before creating the patch helper, so the helper starts from the patched object. Finalizers
+	// are written with their own patch, see patchFinalizers.
+	if !controllerutil.ContainsFinalizer(awsCluster, AwsVpcOperatorFinalizer) {
+		var err error
+		awsCluster, err = r.patchFinalizers(ctx, awsCluster, append(slices.Clone(awsCluster.GetFinalizers()), AwsVpcOperatorFinalizer))
+		if err != nil {
+			return ctrl.Result{}, microerror.Mask(err)
+		}
+	}
 
 	patchHelper, err := patch.NewHelper(awsCluster, r.Client)
 	if err != nil {

@@ -33,6 +33,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	capa "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	capi "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -779,12 +780,29 @@ func (r *AWSClusterReconciler) patchAWSCluster(ctx context.Context, patchHelper 
 		patch.WithOwnedConditions{
 			Conditions: conditionsToUpdate,
 		})
-	if !awsCluster.DeletionTimestamp.IsZero() && apierrors.IsNotFound(err) {
+	if !awsCluster.DeletionTimestamp.IsZero() && isNotFound(err) {
 		// AWSCluster is already deleted, so ignore not found error since
 		// there is nothing to upgrade
 		return nil
 	}
 	return err
+}
+
+// isNotFound reports whether err is a NotFound error. patch.Helper returns its errors as an
+// aggregate wrapped with pkg/errors, which apierrors.IsNotFound does not look into, so for an
+// aggregate it reports whether every error in it is a NotFound error.
+func isNotFound(err error) bool {
+	var agg kerrors.Aggregate
+	if !stderrors.As(err, &agg) {
+		return apierrors.IsNotFound(err)
+	}
+
+	for _, e := range agg.Errors() {
+		if !apierrors.IsNotFound(e) {
+			return false
+		}
+	}
+	return len(agg.Errors()) > 0
 }
 
 // removeFinalizer removes our finalizer from the AWSCluster with patchFinalizers. It reads the

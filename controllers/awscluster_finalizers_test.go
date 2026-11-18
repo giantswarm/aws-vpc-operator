@@ -3,11 +3,14 @@ package controllers
 import (
 	"context"
 	"testing"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	capa "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
+	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -158,6 +161,47 @@ func TestRemoveFinalizer(t *testing.T) {
 		}
 		if got := getFinalizers(t, r.Client, awsCluster); len(got) != 1 || got[0] != otherFinalizer {
 			t.Errorf("expected only %s, got %v", otherFinalizer, got)
+		}
+	})
+}
+
+func TestPatchAWSCluster(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("ignores the AWSCluster being gone once it is being deleted", func(t *testing.T) {
+		r, awsCluster := newFinalizersTestReconciler(t)
+		patchHelper, err := patch.NewHelper(awsCluster, r.Client)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.Delete(ctx, awsCluster.DeepCopy()); err != nil {
+			t.Fatal(err)
+		}
+
+		// The reconciliation started from a cached AWSCluster that was being deleted, and the API
+		// server removed it after its last finalizer was removed.
+		awsCluster.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+		conditions.MarkTrue(awsCluster, capa.VpcReadyCondition)
+
+		if err := r.patchAWSCluster(ctx, patchHelper, awsCluster); err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("returns the error when the AWSCluster is gone but not being deleted", func(t *testing.T) {
+		r, awsCluster := newFinalizersTestReconciler(t)
+		patchHelper, err := patch.NewHelper(awsCluster, r.Client)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.Delete(ctx, awsCluster.DeepCopy()); err != nil {
+			t.Fatal(err)
+		}
+
+		conditions.MarkTrue(awsCluster, capa.VpcReadyCondition)
+
+		if err := r.patchAWSCluster(ctx, patchHelper, awsCluster); err == nil {
+			t.Error("expected an error, got nil")
 		}
 	})
 }

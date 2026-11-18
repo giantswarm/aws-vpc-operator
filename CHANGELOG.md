@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI: push the image to the China registry from `sync-china-registry` (`split-china-push: true`).
 - The `helm.sh/chart` label is valid for long chart versions: the 63-character cut trims the whole trailing run of `-`, `.` and `_`.
 - Use optimistic locking when adding or removing the finalizer on the AWSCluster, so a patch built from an outdated object fails with a conflict instead of overwriting other controllers' finalizers.
+- Ignore the `NotFound` error when patching an AWSCluster that has already been deleted.
 
 ## [1.0.0] - 2026-02-27
 

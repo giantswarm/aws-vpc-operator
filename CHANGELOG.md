@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1-rc.1] - 2026-11-24
+
 ## [1.1.0] - 2026-11-18
 
 ### Fixed
@@ -146,7 +148,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed project name in the template.
 - Renamed `Makefile` to `Makefile.kubebuilder.mk`.
 
-[Unreleased]: https://github.com/giantswarm/aws-vpc-operator/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/giantswarm/aws-vpc-operator/compare/v1.1.1-rc.1...HEAD
+[1.1.1-rc.1]: https://github.com/giantswarm/aws-vpc-operator/compare/v1.1.0...v1.1.1-rc.1
 [1.1.0]: https://github.com/giantswarm/aws-vpc-operator/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/giantswarm/aws-vpc-operator/compare/v0.8.2...v1.0.0
 [0.8.2]: https://github.com/giantswarm/aws-vpc-operator/compare/v0.8.1...v0.8.2

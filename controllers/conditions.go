@@ -1,8 +1,8 @@
 package controllers
 
 import (
-	capi "sigs.k8s.io/cluster-api/api/v1beta1"
-	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
+	capi "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	capiconditions "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
 )
 
 const (

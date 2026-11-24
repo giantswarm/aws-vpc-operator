@@ -1,7 +1,7 @@
 package aws
 
 import (
-	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
 )
 
 type ReconcileRequest[TResourceSpec any] struct {

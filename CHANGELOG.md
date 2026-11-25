@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1-rc.1] - 2026-11-24
+
+### Changed
+
+- Update Kubernetes dependencies: `k8s.io/apimachinery` and `k8s.io/client-go` to v0.37.2, `sigs.k8s.io/controller-runtime` to v0.25.3, `sigs.k8s.io/cluster-api` to v1.12.2 and `sigs.k8s.io/cluster-api-provider-aws/v2` to v2.11.1.
+- Update the AWS SDK: `github.com/aws/aws-sdk-go-v2` to v1.48.0, `service/ec2` to v1.350.0, `service/sts` to v1.53.0, `config` to v1.33.21 and `credentials` to v1.21.3.
+- Update `go.opentelemetry.io/otel` to v1.47.0 to fix a security vulnerability.
+- Update `github.com/aws/aws-sdk-go-v2/service/s3` to v1.97.3 to fix a security vulnerability.
+
 ## [1.1.0] - 2026-11-18
 
 ### Fixed
@@ -146,7 +155,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed project name in the template.
 - Renamed `Makefile` to `Makefile.kubebuilder.mk`.
 
-[Unreleased]: https://github.com/giantswarm/aws-vpc-operator/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/giantswarm/aws-vpc-operator/compare/v1.1.1-rc.1...HEAD
+[1.1.1-rc.1]: https://github.com/giantswarm/aws-vpc-operator/compare/v1.1.0...v1.1.1-rc.1
 [1.1.0]: https://github.com/giantswarm/aws-vpc-operator/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/giantswarm/aws-vpc-operator/compare/v0.8.2...v1.0.0
 [0.8.2]: https://github.com/giantswarm/aws-vpc-operator/compare/v0.8.1...v0.8.2
